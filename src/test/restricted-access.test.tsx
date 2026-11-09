@@ -32,11 +32,13 @@ vi.mock("@/integrations/supabase/client", () => ({
   },
 }));
 
+const signedIn = { value: true };
+
 vi.mock("@/hooks/useAuth", () => ({
   useAuth: () => ({
-    user: { id: "u1", email: "sales@example.com" },
-    profile: { display_name: "Sales User" },
-    role: currentRole.value,
+    user: signedIn.value ? { id: "u1", email: "sales@example.com" } : null,
+    profile: signedIn.value ? { display_name: "Sales User" } : null,
+    role: signedIn.value ? currentRole.value : null,
     isLoading: false,
   }),
   AuthProvider: ({ children }: any) => children,
@@ -49,6 +51,7 @@ import { SidebarProvider } from "@/components/ui/sidebar";
 beforeEach(() => {
   currentRole.value = "sales";
   matrix.current = {};
+  signedIn.value = true;
 });
 
 /** The app's routes, trimmed to what these tests need. */
@@ -63,14 +66,16 @@ function App({ start }: { start: string }) {
           <Route path="/sales" element={<RoleGuard page="sales"><p>Sales page</p></RoleGuard>} />
           <Route path="/customers" element={<RoleGuard page="customers"><p>Customers page</p></RoleGuard>} />
           <Route path="/no-access" element={<p>Nothing assigned to you yet</p>} />
+          <Route path="/auth" element={<p>Login page</p>} />
         </Routes>
       </MemoryRouter>
     </QueryClientProvider>
   );
 }
 
-/** Mirrors App.tsx's landing route. */
+/** Mirrors App.tsx's landing route, signed-out case included. */
 function Landing() {
+  if (!signedIn.value) return <Navigate to="/auth" replace />;
   const home = firstAccessiblePath(currentRole.value, matrix.current);
   return <Navigate to={home ?? "/no-access"} replace />;
 }
@@ -101,6 +106,15 @@ describe("a restricted user never meets an access-denied wall", () => {
     render(<App start="/customers" />);
 
     expect(await screen.findByText("Customers page")).toBeInTheDocument();
+  });
+
+  it("sends a signed-out visitor to the login page instead of spinning", async () => {
+    // "/" waited for a role, which a signed-out visitor never gets: the
+    // deployed site sat on a loading spinner instead of showing the login.
+    signedIn.value = false;
+    render(<App start="/" />);
+
+    expect(await screen.findByText("Login page")).toBeInTheDocument();
   });
 
   it("only someone with nothing at all sees a message, and it is not a refusal", async () => {

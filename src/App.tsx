@@ -56,10 +56,15 @@ const queryClient = new QueryClient({
  * moment they signed in. Now it lands on the first page the role can open.
  */
 function Landing() {
-  const { role, isLoading } = useAuth();
+  const { user, role, isLoading } = useAuth();
   const { permissions, isLoading: permsLoading } = usePermissions();
 
-  if (isLoading || !role || permsLoading) return <RouteFallback />;
+  if (isLoading) return <RouteFallback />;
+  // Signed out: "/" is the way in, so send them to the login page. A signed-out
+  // visitor never gets a role, so waiting for one here would spin forever.
+  if (!user) return <Navigate to="/auth" replace />;
+
+  if (!role || permsLoading) return <RouteFallback />;
   return <Navigate to={firstAccessiblePath(role, permissions) ?? "/no-access"} replace />;
 }
 
