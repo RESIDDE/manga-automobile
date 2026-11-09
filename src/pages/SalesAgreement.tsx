@@ -667,21 +667,24 @@ export default function SalesAgreement() {
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Seller</Label>
                       <div className="rounded-2xl overflow-hidden border border-white/10 bg-background/50">
-                        <SignaturePad value={form.sellerSignature}
+                        <SignaturePad
+                          label="Seller" value={form.sellerSignature}
                           onChange={(v) => setForm((prev) => ({ ...prev, sellerSignature: v }))} />
                       </div>
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Buyer</Label>
                       <div className="rounded-2xl overflow-hidden border border-white/10 bg-background/50">
-                        <SignaturePad value={form.buyerSignature}
+                        <SignaturePad
+                          label="Buyer" value={form.buyerSignature}
                           onChange={(v) => setForm((prev) => ({ ...prev, buyerSignature: v }))} />
                       </div>
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Seller's witness</Label>
                       <div className="rounded-2xl overflow-hidden border border-white/10 bg-background/50">
-                        <SignaturePad value={form.sellerWitnessSignature}
+                        <SignaturePad
+                          label="Seller's witness" value={form.sellerWitnessSignature}
                           onChange={(v) => setForm((prev) => ({ ...prev, sellerWitnessSignature: v }))} />
                       </div>
                       <Input name="sellerWitnessName" value={form.sellerWitnessName} onChange={handleChange}
@@ -691,7 +694,8 @@ export default function SalesAgreement() {
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Buyer's witness</Label>
                       <div className="rounded-2xl overflow-hidden border border-white/10 bg-background/50">
-                        <SignaturePad value={form.buyerWitnessSignature}
+                        <SignaturePad
+                          label="Buyer's witness" value={form.buyerWitnessSignature}
                           onChange={(v) => setForm((prev) => ({ ...prev, buyerWitnessSignature: v }))} />
                       </div>
                       <Input name="buyerWitnessName" value={form.buyerWitnessName} onChange={handleChange}
@@ -701,7 +705,8 @@ export default function SalesAgreement() {
                     <div className="space-y-2 md:col-span-2">
                       <Label className="text-xs text-muted-foreground">Company representative</Label>
                       <div className="rounded-2xl overflow-hidden border border-white/10 bg-background/50 md:w-1/2">
-                        <SignaturePad value={form.repSignature}
+                        <SignaturePad
+                          label="Company representative" value={form.repSignature}
                           onChange={(v) => setForm((prev) => ({ ...prev, repSignature: v }))} />
                       </div>
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:w-1/2">

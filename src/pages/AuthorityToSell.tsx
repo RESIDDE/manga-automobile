@@ -565,6 +565,7 @@ export default function AuthorityToSell() {
                       <Label className="text-xs text-muted-foreground">Owner / Representative</Label>
                       <div className="rounded-2xl overflow-hidden border border-white/10 bg-background/50">
                         <SignaturePad
+                          label="Owner / Representative"
                           value={form.signature}
                           onChange={(v) => setForm((prev) => ({ ...prev, signature: v }))}
                         />
@@ -574,6 +575,7 @@ export default function AuthorityToSell() {
                       <Label className="text-xs text-muted-foreground">Company Representative</Label>
                       <div className="rounded-2xl overflow-hidden border border-white/10 bg-background/50">
                         <SignaturePad
+                          label="Company Representative"
                           value={form.repSignature}
                           onChange={(v) => setForm((prev) => ({ ...prev, repSignature: v }))}
                         />

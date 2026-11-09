@@ -13,7 +13,7 @@ import { supabase } from "@/integrations/supabase/client";
 export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
   const navigate = useNavigate();
   const { role } = useAuth();
-  const { permissions } = usePermissions();
+  const { permissions, isLoading: permsLoading } = usePermissions();
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -27,9 +27,12 @@ export function CommandPalette({ open, onOpenChange }: { open: boolean; onOpenCh
   }, [open, onOpenChange]);
 
   const pages = useMemo(() => {
+    // Same reason as the sidebar: do not offer the defaults while the real
+    // matrix is still loading.
+    if (permsLoading || !role) return [];
     const accessible = getAccessiblePages(role as AppRole | null, permissions);
     return ALL_PAGES.filter((p) => accessible.includes(p.key as PageKey));
-  }, [role, permissions]);
+  }, [role, permissions, permsLoading]);
 
   const go = (path: string) => {
     onOpenChange(false);

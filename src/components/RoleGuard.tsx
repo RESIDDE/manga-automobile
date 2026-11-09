@@ -4,7 +4,7 @@ import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
-import { canAccess, isUnrestricted, type PageKey } from "@/lib/permissions";
+import { canAccess, firstAccessiblePath, isUnrestricted, type PageKey } from "@/lib/permissions";
 
 function Resolving() {
   return (
@@ -24,7 +24,14 @@ export function RoleGuard({ page, children }: { page: PageKey; children: React.R
   const { permissions, isLoading: permsLoading } = usePermissions();
 
   if (authLoading || !role || permsLoading) return <Resolving />;
-  if (!canAccess(role, page, permissions)) return <Navigate to="/unauthorized" replace />;
+
+  if (!canAccess(role, page, permissions)) {
+    // Quietly land on the first page this role can open. A page they were never
+    // given should simply not be part of their app — not a refusal they have to
+    // click past. Only someone with nothing at all sees a message.
+    const fallback = firstAccessiblePath(role, permissions);
+    return <Navigate to={fallback ?? "/no-access"} replace />;
+  }
 
   return <>{children}</>;
 }
@@ -38,6 +45,7 @@ export function RoleGuard({ page, children }: { page: PageKey; children: React.R
  */
 export function AdminGuard({ children }: { children: React.ReactNode }) {
   const { role, isLoading } = useAuth();
+  const { permissions } = usePermissions();
 
   const { data: adminCount, isLoading: countLoading } = useQuery({
     queryKey: ["user_roles", "admin_count"],
@@ -57,5 +65,7 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
   if (isUnrestricted(role)) return <>{children}</>;
   if ((adminCount ?? 1) === 0) return <>{children}</>;
 
-  return <Navigate to="/unauthorized" replace />;
+  // Settings is not theirs: put them back in their own app
+  const fallback = firstAccessiblePath(role, permissions);
+  return <Navigate to={fallback ?? "/no-access"} replace />;
 }

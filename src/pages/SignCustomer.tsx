@@ -47,7 +47,8 @@ export default function SignCustomer() {
           <p className="text-sm text-muted-foreground text-center">Please sign below to confirm</p>
         </CardHeader>
         <CardContent className="space-y-4">
-          <SignaturePad value={signature} onChange={setSignature} />
+          <SignaturePad
+                          label="Customer" value={signature} onChange={setSignature} />
           <Button onClick={handleSubmit} disabled={!signature || saving} className="w-full rounded-xl">
             {saving ? "Submitting..." : "Submit Signature"}
           </Button>

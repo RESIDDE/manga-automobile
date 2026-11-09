@@ -329,7 +329,8 @@ export default function Customers() {
             <div className="space-y-2">
                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Electronic Signature</Label>
                <div className="rounded-xl overflow-hidden border border-white/10">
-                 <SignaturePad value={form.signature_data} onChange={(v) => setForm({ ...form, signature_data: v })} />
+                 <SignaturePad
+                          label="Customer" value={form.signature_data} onChange={(v) => setForm({ ...form, signature_data: v })} />
                </div>
             </div>
           </div>

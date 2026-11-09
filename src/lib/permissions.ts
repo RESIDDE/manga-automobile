@@ -167,6 +167,22 @@ export function getAccessiblePages(
   return ALL_PAGE_KEYS.filter((key) => view.includes(key));
 }
 
+/**
+ * Where to send this role when no particular page was asked for, or when the
+ * page they asked for is not theirs: the first page they can actually open, in
+ * sidebar order. Null means they have been given nothing yet.
+ *
+ * Restricted access should feel like a smaller app, not a wall of refusals, so
+ * callers navigate here instead of showing an "access denied" screen.
+ */
+export function firstAccessiblePath(
+  role: AppRole | null, permissions?: PermissionsMap | null
+): string | null {
+  const [first] = getAccessiblePages(role, permissions);
+  if (!first) return null;
+  return ALL_PAGES.find((p) => p.key === first)?.path ?? null;
+}
+
 /** Every role key the matrix knows about, unrestricted roles first. */
 export function allRoleKeys(permissions?: PermissionsMap | null): string[] {
   const keys = new Set<string>(["admin", ...Object.keys(permissions ?? DEFAULT_PERMISSIONS)]);

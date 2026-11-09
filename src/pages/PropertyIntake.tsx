@@ -1082,7 +1082,8 @@ export default function PropertyIntake() {
                           {approverSignature && <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-3 py-1 rounded-full font-bold flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3" /> READY</span>}
                         </div>
                         <div className="bg-card/40 p-3 rounded-2xl border border-white/5">
-                          <SignaturePad value={approverSignature} onChange={setApproverSignature} />
+                          <SignaturePad
+                          label="Approving officer" value={approverSignature} onChange={setApproverSignature} />
                         </div>
                       </div>
 
@@ -1098,7 +1099,8 @@ export default function PropertyIntake() {
                             {signOne && <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-3 py-1 rounded-full font-bold flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3" /> READY</span>}
                           </div>
                           <div className="bg-card/40 p-3 rounded-2xl border border-white/5">
-                            <SignaturePad value={signOne} onChange={setSignOne} />
+                            <SignaturePad
+                          label="Signature one" value={signOne} onChange={setSignOne} />
                           </div>
                         </div>
                         <div className="space-y-3">
@@ -1107,7 +1109,8 @@ export default function PropertyIntake() {
                             {signTwo && <span className="text-[10px] bg-emerald-500/10 text-emerald-500 px-3 py-1 rounded-full font-bold flex items-center gap-1.5"><CheckCircle2 className="w-3 h-3" /> READY</span>}
                           </div>
                           <div className="bg-card/40 p-3 rounded-2xl border border-white/5">
-                            <SignaturePad value={signTwo} onChange={setSignTwo} />
+                            <SignaturePad
+                          label="Signature two" value={signTwo} onChange={setSignTwo} />
                           </div>
                         </div>
                       </div>

@@ -78,6 +78,18 @@
   }
 }
 
+/* ─── Login screen accent ───────────────────────────────────────────────────
+   The dashboard's lime (--primary: 66 100% 56%) was too loud behind the sign-in
+   form, where it fills the page as two large blurred glows. Scoped to this page
+   only: half the saturation and roughly half the lightness, giving a darker,
+   calmer green. Everything on the page — the glows, the logo tile, the button,
+   the focus rings — follows --primary, so this one override moves all of it.
+   At this lightness the white button text clears 4.5:1 contrast. */
+.dark .auth-screen {
+  --primary: 66 50% 30%;
+  --ring: 66 50% 30%;
+}
+
 @layer base {
   * {
     @apply border-border;

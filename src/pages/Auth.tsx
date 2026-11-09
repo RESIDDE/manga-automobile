@@ -59,7 +59,7 @@ export default function Auth() {
   };
 
   return (
-    <div className="min-h-screen flex bg-background relative overflow-hidden">
+    <div className="auth-screen min-h-screen flex bg-background relative overflow-hidden">
       {/* ─── Decorative left panel (hidden on mobile) ─── */}
       <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden flex-col items-center justify-center p-12 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black">
         {/* Glow blobs */}

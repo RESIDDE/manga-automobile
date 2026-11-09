@@ -108,7 +108,9 @@ describe("Sale signing link", () => {
 
   it("offers the signature pad and the refund policy", async () => {
     renderSignPage();
-    expect(await screen.findByText(/Sign here — buyer/i)).toBeInTheDocument();
+    // The pad itself prompts, naming who signs
+    expect(await screen.findByText(/Sign here — Buyer/)).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /signature pad/i })).toBeInTheDocument();
     expect(screen.getByText(/no refund of money is made after payment/i)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Sign & accept this document/i })).toBeDisabled();
   });

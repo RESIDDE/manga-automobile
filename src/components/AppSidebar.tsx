@@ -74,7 +74,7 @@ export function AppSidebar() {
   const { state, toggleSidebar, isMobile } = useSidebar();
   const collapsed = state === "collapsed" && !isMobile;
   const { role, user, profile } = useAuth();
-  const { permissions } = usePermissions();
+  const { permissions, isLoading: permsLoading } = usePermissions();
   const location = useLocation();
   const navigate = useNavigate();
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -85,19 +85,39 @@ export function AppSidebar() {
 
   const items = useMemo(
     () =>
-      ALL_NAV_ITEMS.filter((i) => accessible.includes(i.pageKey as PageKey)).map((i) => ({
-        ...i,
-        children: i.children?.filter((c) => accessible.includes(c.pageKey)),
-      })),
-    [accessible],
+      // Until the matrix has loaded, usePermissions reports the defaults. Showing
+      // those would flash pages a restricted user cannot open, so show nothing
+      // for the moment it takes to arrive.
+      permsLoading || !role
+        ? []
+        : ALL_NAV_ITEMS
+        .map((i) => {
+          const children = i.children?.filter((c) => accessible.includes(c.pageKey));
+          const canOpenParent = accessible.includes(i.pageKey as PageKey);
+          // A group survives if the role can open the parent or any child. The
+          // Documents group is keyed on authority-to-sell, so a role granted
+          // only the proforma invoice used to lose the whole group with it.
+          if (!canOpenParent && !children?.length) return null;
+          return {
+            ...i,
+            // Clicking the group must land somewhere the role can actually open
+            url: canOpenParent ? i.url : children![0].url,
+            children,
+          };
+        })
+        .filter((i): i is NonNullable<typeof i> => i !== null),
+    [accessible, permsLoading, role],
   );
 
-  // A group opens by itself when you are somewhere inside it.
+  // A group opens by itself when you are somewhere inside it. This has to watch
+  // `items` as well as the route: nav starts empty while the permission matrix
+  // loads, so keying on the path alone meant the effect ran once against an
+  // empty list and the group never opened.
   useEffect(() => {
     const owner = items.find((i) => i.children?.some((c) => location.pathname === c.url));
     if (owner && !expanded.includes(owner.title)) setExpanded((prev) => [...prev, owner.title]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname]);
+  }, [location.pathname, items]);
 
   const { data: customers = [] } = useQuery({
     queryKey: ["sidebar-customers"],

@@ -2003,7 +2003,8 @@ export default function Sales() {
                   <div className="space-y-2">
                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Rep Signature</Label>
                      <div className="rounded-2xl overflow-hidden border border-white/10 bg-background/50">
-                        <SignaturePad value={form.rep_signature} onChange={(v) => setForm({ ...form, rep_signature: v })} />
+                        <SignaturePad
+                          label="Rep" value={form.rep_signature} onChange={(v) => setForm({ ...form, rep_signature: v })} />
                      </div>
                   </div>
                </div>
@@ -2012,7 +2013,8 @@ export default function Sales() {
                   <div className="space-y-2">
                      <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Buyer Signature (In-Person)</Label>
                      <div className="rounded-2xl overflow-hidden border border-white/10 bg-background/50">
-                        <SignaturePad value={form.buyer_signature} onChange={(v) => setForm({ ...form, buyer_signature: v })} />
+                        <SignaturePad
+                          label="Buyer" value={form.buyer_signature} onChange={(v) => setForm({ ...form, buyer_signature: v })} />
                      </div>
                   </div>
                   {form.buyer_signature && (

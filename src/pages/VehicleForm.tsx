@@ -540,6 +540,7 @@ export default function VehicleForm() {
               <Label>Representative Signature</Label>
               <div className="rounded-2xl overflow-hidden border bg-background/50 max-w-md">
                 <SignaturePad
+                          label="Source representative"
                   value={form.source_rep_signature}
                   onChange={(v) => setForm({ ...form, source_rep_signature: v })}
                 />
@@ -560,6 +561,7 @@ export default function VehicleForm() {
               <Label>Receiver Signature</Label>
               <div className="rounded-2xl overflow-hidden border bg-background/50 max-w-md">
                 <SignaturePad
+                          label="Received by"
                   value={form.accepted_signature}
                   onChange={(v) => setForm({ ...form, accepted_signature: v })}
                 />

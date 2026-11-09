@@ -52,10 +52,12 @@ describe("AppSidebar", () => {
     expect(marks[0].getAttribute("src")).toMatch(/logo-(dark|tile)/);
   });
 
-  it("renders the sections and nav items a super admin can reach", () => {
+  it("renders the sections and nav items a super admin can reach", async () => {
     renderSidebar();
+    // Nav appears once the permission matrix has loaded, so nothing a role
+    // cannot open is ever flashed first.
+    expect(await screen.findByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Main")).toBeInTheDocument();
-    expect(screen.getByText("Dashboard")).toBeInTheDocument();
     expect(screen.getByText("Vehicles")).toBeInTheDocument();
     expect(screen.getByText("Property")).toBeInTheDocument();
     // search affordance with its shortcut
@@ -64,11 +66,11 @@ describe("AppSidebar", () => {
     expect(screen.getByText("S")).toBeInTheDocument();
   });
 
-  it("expands a group to reveal its tree children", () => {
+  it("expands a group to reveal its tree children", async () => {
     renderSidebar();
     expect(screen.queryByText("Add Vehicle")).toBeNull();
 
-    fireEvent.click(screen.getByLabelText("Expand Vehicles"));
+    fireEvent.click(await screen.findByLabelText("Expand Vehicles"));
     expect(screen.getByText("All Vehicles")).toBeInTheDocument();
     expect(screen.getByText("Add Vehicle")).toBeInTheDocument();
 
@@ -76,9 +78,9 @@ describe("AppSidebar", () => {
     expect(screen.queryByText("Add Vehicle")).toBeNull();
   });
 
-  it("opens the group that owns the current route", () => {
+  it("opens the group that owns the current route", async () => {
     renderSidebar("/vehicles/new");
-    expect(screen.getByText("All Vehicles")).toBeInTheDocument();
+    expect(await screen.findByText("All Vehicles")).toBeInTheDocument();
     expect(screen.getByText("Add Vehicle")).toBeInTheDocument();
   });
 

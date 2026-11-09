@@ -34,7 +34,9 @@ export function GuestGuard({ children }: { children: React.ReactNode }) {
 
   if (isLoading) return <Resolving />;
   if (user) {
-    const target = (location.state as { from?: Location })?.from?.pathname ?? "/dashboard";
+    // "/" picks the first page this role can open; a hardcoded /dashboard
+    // bounced restricted users into an access-denied screen on sign-in.
+    const target = (location.state as { from?: Location })?.from?.pathname ?? "/";
     return <Navigate to={target} replace />;
   }
 

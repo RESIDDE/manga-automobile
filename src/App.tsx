@@ -7,10 +7,11 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/AppLayout";
 import { PrintFitSync } from "@/components/PrintFitSync";
-import { PermissionsRealtimeSync } from "@/hooks/usePermissions";
 import { RoleGuard, AdminGuard } from "@/components/RoleGuard";
 import { AuthGuard, GuestGuard } from "@/components/AuthGuard";
-import { AuthProvider } from "@/hooks/useAuth";
+import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { usePermissions, PermissionsRealtimeSync } from "@/hooks/usePermissions";
+import { firstAccessiblePath } from "@/lib/permissions";
 // Eager: the first screens after sign-in, so there is no spinner on arrival.
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
@@ -49,6 +50,19 @@ const queryClient = new QueryClient({
   },
 });
 
+/**
+ * Where "/" goes. It used to be a hard redirect to /dashboard, so anyone whose
+ * role lacks the dashboard was bounced straight to an access-denied screen the
+ * moment they signed in. Now it lands on the first page the role can open.
+ */
+function Landing() {
+  const { role, isLoading } = useAuth();
+  const { permissions, isLoading: permsLoading } = usePermissions();
+
+  if (isLoading || !role || permsLoading) return <RouteFallback />;
+  return <Navigate to={firstAccessiblePath(role, permissions) ?? "/no-access"} replace />;
+}
+
 /** Shown while a route's chunk downloads — a beat, not a blank screen. */
 function RouteFallback() {
   return (
@@ -63,7 +77,7 @@ function AppRoutes() {
     <Suspense fallback={<RouteFallback />}>
     <Routes>
       {/* Root → land directly on dashboard */}
-      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+      <Route path="/" element={<Landing />} />
 
       {/* Login / registration */}
       <Route path="/auth" element={<GuestGuard><Auth /></GuestGuard>} />
@@ -92,6 +106,7 @@ function AppRoutes() {
             <Route path="/meetings"          element={<RoleGuard page="meetings"><Meetings /></RoleGuard>} />
             <Route path="/property-intake"   element={<RoleGuard page="property-intake"><PropertyIntake /></RoleGuard>} />
             <Route path="/settings"          element={<AdminGuard><Settings /></AdminGuard>} />
+            <Route path="/no-access"         element={<Unauthorized />} />
             <Route path="/unauthorized"      element={<Unauthorized />} />
             <Route path="*"                  element={<NotFound />} />
           </Routes>

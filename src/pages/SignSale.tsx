@@ -262,11 +262,9 @@ export default function SignSale() {
             </div>
 
             <div className="space-y-3">
-              <p className="text-[10px] text-center text-muted-foreground uppercase tracking-widest font-bold">
-                Sign here — buyer
-              </p>
               <div className="rounded-2xl overflow-hidden border border-white/10 bg-background/50 hover:border-violet-500/30 transition-colors">
-                <SignaturePad value={signature} onChange={setSignature} />
+                <SignaturePad
+                          label="Buyer" value={signature} onChange={setSignature} />
               </div>
               <p className="text-[11px] text-center text-muted-foreground">
                 Use your finger on a phone, or your mouse on a computer. Your signature appears on
