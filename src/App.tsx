@@ -1,34 +1,42 @@
+import { Suspense, lazy } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
 import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/AppLayout";
-import { RoleGuard } from "@/components/RoleGuard";
-import { useAuth } from "@/hooks/useAuth";
+import { PrintFitSync } from "@/components/PrintFitSync";
+import { PermissionsRealtimeSync } from "@/hooks/usePermissions";
+import { RoleGuard, AdminGuard } from "@/components/RoleGuard";
+import { AuthGuard, GuestGuard } from "@/components/AuthGuard";
+import { AuthProvider } from "@/hooks/useAuth";
+// Eager: the first screens after sign-in, so there is no spinner on arrival.
 import Index from "./pages/Index";
 import Auth from "./pages/Auth";
-import Settings from "./pages/Settings";
-import Unauthorized from "./pages/Unauthorized";
-import VehiclesList from "./pages/VehiclesList";
-import VehicleForm from "./pages/VehicleForm";
-import VehicleDetail from "./pages/VehicleDetail";
-import Customers from "./pages/Customers";
-import Sales from "./pages/Sales";
-import Invoices from "./pages/Invoices";
-import Inquiries from "./pages/Inquiries";
-import Inspections from "./pages/Inspections";
-import RepairsMaintenance from "./pages/RepairsMaintenance";
-import AuthorityToSell from "./pages/AuthorityToSell";
-import Meetings from "./pages/Meetings";
-import PublicBooking from "./pages/PublicBooking";
-import SignRepair from "./pages/SignRepair";
-import SignCustomer from "./pages/SignCustomer";
-import SignInspection from "./pages/SignInspection";
-import SignSale from "./pages/SignSale";
 import NotFound from "./pages/NotFound";
-import CustomerPortal from "./pages/CustomerPortal";
-import { Loader2 } from "lucide-react";
+import Unauthorized from "./pages/Unauthorized";
+
+/**
+ * Everything else is split per route. The app used to ship as one 2.2 MB bundle,
+ * which had to download and parse before anything rendered; now a page (and the
+ * chart, PDF and canvas libraries it uses) arrives when it is first opened.
+ */
+const VehiclesList = lazy(() => import("./pages/VehiclesList"));
+const VehicleForm = lazy(() => import("./pages/VehicleForm"));
+const VehicleDetail = lazy(() => import("./pages/VehicleDetail"));
+const SourceCompany = lazy(() => import("./pages/SourceCompany"));
+const Customers = lazy(() => import("./pages/Customers"));
+const Sales = lazy(() => import("./pages/Sales"));
+const AuthorityToSell = lazy(() => import("./pages/AuthorityToSell"));
+const SalesAgreement = lazy(() => import("./pages/SalesAgreement"));
+const ProformaInvoice = lazy(() => import("./pages/ProformaInvoice"));
+const Meetings = lazy(() => import("./pages/Meetings"));
+const PropertyIntake = lazy(() => import("./pages/PropertyIntake"));
+const Settings = lazy(() => import("./pages/Settings"));
+const PublicBooking = lazy(() => import("./pages/PublicBooking"));
+const SignCustomer = lazy(() => import("./pages/SignCustomer"));
+const SignSale = lazy(() => import("./pages/SignSale"));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -41,70 +49,57 @@ const queryClient = new QueryClient({
   },
 });
 
-/** Blocks protected routes — shows spinner then redirects to /auth if no session. */
-function AuthGuard({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-amber-500" />
-      </div>
-    );
-  }
-  if (!user) return <Navigate to="/auth" replace />;
-  return <>{children}</>;
-}
-
-/** Shows a spinner / Auth page while session resolves; redirects to dashboard if already signed in. */
-function GuestGuard({ children }: { children: React.ReactNode }) {
-  const { user, isLoading } = useAuth();
-  if (isLoading) return <>{children}</>;          // Show auth page instantly
-  if (user) return <Navigate to="/dashboard" replace />;
-  return <>{children}</>;
+/** Shown while a route's chunk downloads — a beat, not a blank screen. */
+function RouteFallback() {
+  return (
+    <div className="h-[60vh] flex items-center justify-center">
+      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+    </div>
+  );
 }
 
 function AppRoutes() {
   return (
+    <Suspense fallback={<RouteFallback />}>
     <Routes>
-      {/* Root → always land on sign-in */}
-      <Route path="/" element={<Navigate to="/auth" replace />} />
+      {/* Root → land directly on dashboard */}
+      <Route path="/" element={<Navigate to="/dashboard" replace />} />
+
+      {/* Login / registration */}
+      <Route path="/auth" element={<GuestGuard><Auth /></GuestGuard>} />
 
       {/* Public pages */}
-      <Route path="/auth"                element={<GuestGuard><Auth /></GuestGuard>} />
-      <Route path="/portal"              element={<CustomerPortal />} />
       <Route path="/book"                element={<PublicBooking />} />
-      <Route path="/sign/repair/:id"     element={<SignRepair />} />
       <Route path="/sign/customer/:id"   element={<SignCustomer />} />
-      <Route path="/sign/inspection/:id" element={<SignInspection />} />
       <Route path="/sign/sale/:id"       element={<SignSale />} />
 
-      {/* Protected pages — inside AuthGuard + AppLayout */}
+      {/* Main app pages inside AppLayout */}
       <Route path="/*" element={
         <AuthGuard>
-          <AppLayout>
-            <Routes>
-              <Route path="/dashboard"         element={<RoleGuard page="dashboard"><Index /></RoleGuard>} />
-              <Route path="/vehicles"          element={<RoleGuard page="vehicles"><VehiclesList /></RoleGuard>} />
-              <Route path="/vehicles/new"      element={<RoleGuard page="vehicles"><VehicleForm /></RoleGuard>} />
-              <Route path="/vehicles/:id"      element={<RoleGuard page="vehicles"><VehicleDetail /></RoleGuard>} />
-              <Route path="/vehicles/:id/edit" element={<RoleGuard page="vehicles"><VehicleForm /></RoleGuard>} />
-              <Route path="/customers"         element={<RoleGuard page="customers"><Customers /></RoleGuard>} />
-              <Route path="/sales"             element={<RoleGuard page="sales"><Sales /></RoleGuard>} />
-              <Route path="/invoices"          element={<RoleGuard page="invoices"><Invoices /></RoleGuard>} />
-              <Route path="/inquiries"         element={<RoleGuard page="inquiries"><Inquiries /></RoleGuard>} />
-              <Route path="/inspections"       element={<RoleGuard page="inspections"><Inspections /></RoleGuard>} />
-              <Route path="/repairs"           element={<RoleGuard page={"repairs" as any}><RepairsMaintenance /></RoleGuard>} />
-              <Route path="/authority-to-sell" element={<RoleGuard page="authority-to-sell"><AuthorityToSell /></RoleGuard>} />
-              <Route path="/meetings"          element={<RoleGuard page="meetings"><Meetings /></RoleGuard>} />
-              {/* Settings — only super_admin can see; RoleGuard handled internally */}
-              <Route path="/settings"          element={<Settings />} />
-              <Route path="/unauthorized"      element={<Unauthorized />} />
-              <Route path="*"                  element={<NotFound />} />
-            </Routes>
-          </AppLayout>
+        <AppLayout>
+          <Routes>
+            <Route path="/dashboard"         element={<RoleGuard page="dashboard"><Index /></RoleGuard>} />
+            <Route path="/vehicles"          element={<RoleGuard page="vehicles"><VehiclesList /></RoleGuard>} />
+            <Route path="/vehicles/new"      element={<RoleGuard page="vehicles"><VehicleForm /></RoleGuard>} />
+            <Route path="/vehicles/:id"      element={<RoleGuard page="vehicles"><VehicleDetail /></RoleGuard>} />
+            <Route path="/vehicles/:id/edit" element={<RoleGuard page="vehicles"><VehicleForm /></RoleGuard>} />
+            <Route path="/source-company/:name" element={<RoleGuard page="vehicles"><SourceCompany /></RoleGuard>} />
+            <Route path="/customers"         element={<RoleGuard page="customers"><Customers /></RoleGuard>} />
+            <Route path="/sales"             element={<RoleGuard page="sales"><Sales /></RoleGuard>} />
+            <Route path="/authority-to-sell" element={<RoleGuard page="authority-to-sell"><AuthorityToSell /></RoleGuard>} />
+            <Route path="/sales-agreement"   element={<RoleGuard page="authority-to-sell"><SalesAgreement /></RoleGuard>} />
+            <Route path="/performance-quotes" element={<RoleGuard page="performance-quotes"><ProformaInvoice /></RoleGuard>} />
+            <Route path="/meetings"          element={<RoleGuard page="meetings"><Meetings /></RoleGuard>} />
+            <Route path="/property-intake"   element={<RoleGuard page="property-intake"><PropertyIntake /></RoleGuard>} />
+            <Route path="/settings"          element={<AdminGuard><Settings /></AdminGuard>} />
+            <Route path="/unauthorized"      element={<Unauthorized />} />
+            <Route path="*"                  element={<NotFound />} />
+          </Routes>
+        </AppLayout>
         </AuthGuard>
       } />
     </Routes>
+    </Suspense>
   );
 }
 
@@ -113,8 +108,12 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
+      <PrintFitSync />
       <BrowserRouter>
-        <AppRoutes />
+        <AuthProvider>
+          <PermissionsRealtimeSync />
+          <AppRoutes />
+        </AuthProvider>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

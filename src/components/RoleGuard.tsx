@@ -1,26 +1,61 @@
 import { Navigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
+import { Loader2 } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { canAccess, PageKey } from "@/lib/permissions";
-import type { AppRole } from "@/lib/permissions";
+import { usePermissions } from "@/hooks/usePermissions";
+import { canAccess, isUnrestricted, type PageKey } from "@/lib/permissions";
 
-interface RoleGuardProps {
-  page: PageKey;
-  children: React.ReactNode;
+function Resolving() {
+  return (
+    <div className="h-[60vh] flex items-center justify-center">
+      <Loader2 className="h-6 w-6 animate-spin text-primary" />
+    </div>
+  );
 }
 
 /**
- * Wraps a protected route. If the user's role doesn't have permission
- * for this page, redirects to /unauthorized.
+ * Wraps a protected route. Waits for auth *and* the permission matrix before
+ * deciding, so a restricted page never flashes into view and a slow matrix read
+ * is not mistaken for a denial.
  */
-export function RoleGuard({ page, children }: RoleGuardProps) {
-  const { role, isLoading } = useAuth();
+export function RoleGuard({ page, children }: { page: PageKey; children: React.ReactNode }) {
+  const { role, isLoading: authLoading } = useAuth();
+  const { permissions, isLoading: permsLoading } = usePermissions();
 
-  // Still resolving auth — let it through (AuthGuard already verified session)
-  if (isLoading) return <>{children}</>;
-
-  if (!canAccess(role as AppRole | null, page)) {
-    return <Navigate to="/unauthorized" replace />;
-  }
+  if (authLoading || !role || permsLoading) return <Resolving />;
+  if (!canAccess(role, page, permissions)) return <Navigate to="/unauthorized" replace />;
 
   return <>{children}</>;
+}
+
+/**
+ * Settings and anything else that is admin-only.
+ *
+ * One exception: when the system has no admin at all, any signed-in user is let
+ * through so they can claim admin on a fresh install. Once an admin exists the
+ * door closes, and admin is granted by an existing admin from then on.
+ */
+export function AdminGuard({ children }: { children: React.ReactNode }) {
+  const { role, isLoading } = useAuth();
+
+  const { data: adminCount, isLoading: countLoading } = useQuery({
+    queryKey: ["user_roles", "admin_count"],
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { count, error } = await (supabase as any)
+        .from("user_roles")
+        .select("id", { count: "exact", head: true })
+        .in("role", ["admin", "super_admin"]);
+      // A failed count must not hand out admin: treat it as "an admin exists"
+      if (error) return 1;
+      return count ?? 0;
+    },
+  });
+
+  if (isLoading || !role || countLoading) return <Resolving />;
+  if (isUnrestricted(role)) return <>{children}</>;
+  if ((adminCount ?? 1) === 0) return <>{children}</>;
+
+  return <Navigate to="/unauthorized" replace />;
 }

@@ -1,53 +1,24 @@
+import { Link } from "react-router-dom";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
-import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/integrations/supabase/client";
-import { Button } from "@/components/ui/button";
-import { LogOut, User } from "lucide-react";
-import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
-import logo from "@/assets/logo.png";
+import { BrandMark } from "@/components/BrandMark";
 
 export function AppLayout({ children }: { children: React.ReactNode }) {
-  const { user, profile } = useAuth();
-  const navigate = useNavigate();
-
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    toast.success("Signed out successfully.");
-    navigate("/auth");
-  };
-
-  const displayName = profile?.full_name || user?.email?.split("@")[0] || "Admin";
-
   return (
-    <SidebarProvider>
+    <SidebarProvider
+      style={{ "--sidebar-width": "17rem", "--sidebar-width-icon": "4rem" } as React.CSSProperties}
+    >
       <div className="h-screen flex w-full bg-background transition-colors duration-300">
         <AppSidebar />
-        <div className="flex-1 flex flex-col min-w-0 bg-background sm:rounded-l-[2rem] sm:border-l sm:border-y sm:my-2 sm:mr-2 shadow-2xl relative overflow-hidden transition-all duration-300">
-          <header className="sticky top-0 z-30 h-16 flex items-center border-b border-border/40 bg-background/40 backdrop-blur-xl px-4 sm:px-6 gap-2 print:hidden">
-            <SidebarTrigger className="mr-2 -ml-2 rounded-full hover:bg-primary/10 transition-colors" />
-            <img src={logo} alt="AMU Global Motors logo" className="h-7 w-7 sm:h-8 sm:w-8 rounded-lg object-contain shadow-sm border border-border/50 shrink-0" />
-            <span className="text-sm sm:text-lg font-heading font-black tracking-tight text-foreground truncate flex-1 uppercase tracking-tighter sm:tracking-widest">
-              AMU GLOBAL MOTORS
-            </span>
-
-            {/* User info + Logout */}
-            <div className="flex items-center gap-2 sm:gap-3 ml-auto shrink-0">
-              <div className="hidden sm:flex items-center gap-2 bg-foreground/5 border border-foreground/10 px-3 py-1.5 rounded-full">
-                <User className="h-3.5 w-3.5 text-amber-500 shrink-0" />
-                <span className="text-xs font-semibold text-foreground truncate max-w-[120px]">{displayName}</span>
-              </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={handleLogout}
-                className="rounded-full hover:bg-destructive/10 hover:text-destructive transition-all gap-1.5 text-muted-foreground text-xs font-semibold"
-              >
-                <LogOut className="h-4 w-4" />
-                <span className="hidden sm:inline">Sign Out</span>
-              </Button>
-            </div>
+        <div className="flex-1 flex flex-col min-w-0 bg-background relative overflow-hidden transition-all duration-300">
+          <header className="sticky top-0 z-30 h-16 flex items-center border-b border-border/40 bg-background/60 backdrop-blur-xl px-4 sm:px-6 gap-2.5 print:hidden md:hidden">
+            <SidebarTrigger className="-ml-1 rounded-full hover:bg-primary/10 transition-colors shrink-0" />
+            <Link to="/dashboard" className="flex items-center gap-2.5 min-w-0 hover:opacity-90 transition-opacity">
+              <BrandMark size={32} className="shrink-0" />
+              <span className="text-sm font-heading font-black tracking-tight text-foreground truncate uppercase">
+                Manga Automobiles
+              </span>
+            </Link>
           </header>
           <main className="flex-1 p-4 md:p-8 overflow-auto animate-fade-up">
             <div className="mx-auto max-w-7xl h-full">

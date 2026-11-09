@@ -15,13 +15,16 @@ import {
 import { toast } from "sonner";
 import {
   Shield, ShieldAlert, ShieldCheck, User, Users, Settings2,
-  ToggleLeft, Eye, Pencil, RotateCcw, Crown, Lock, Activity,
+  ToggleLeft, Eye, Pencil, PlusCircle, RotateCcw, Crown, Lock, Activity,
   UserPlus, ArrowRightLeft, AlertTriangle, CheckCircle2, Trash2,
 } from "lucide-react";
 import {
-  ALL_PAGES, getPermissions, savePermissions, resetPermissions,
-  DEFAULT_PERMISSIONS, type AppRole, type PageKey,
+  ALL_PAGES, DEFAULT_PERMISSIONS, PERMISSION_ACTIONS, allRoleKeys,
+  emptyRolePermissions, isUnrestricted, roleLabel,
+  type AppRole, type PageKey, type PermissionAction, type PermissionsMap,
 } from "@/lib/permissions";
+import { usePermissions } from "@/hooks/usePermissions";
+import { CustomPagination } from "@/components/CustomPagination";
 import { logAction, describeLog } from "@/lib/logger";
 
 type Tab = "team" | "permissions" | "audit" | "system";
@@ -56,8 +59,20 @@ export default function Settings() {
   const { role, user } = useAuth();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState<Tab>("team");
-  const [permissions, setPermissions] = useState(() => getPermissions());
+  const {
+    permissions: livePermissions, roleLabels, savePermissions, saveRoleLabels, isSaving,
+  } = usePermissions();
+  // Edits land in local state so several boxes can be ticked before saving
+  const [localPermissions, setLocalPermissions] = useState<PermissionsMap | null>(null);
   const [permDirty, setPermDirty] = useState(false);
+  const [newRoleKey, setNewRoleKey] = useState("");
+  const [teamPage, setTeamPage] = useState(0);
+  const [teamPageSize, setTeamPageSize] = useState(10);
+  const [logPage, setLogPage] = useState(0);
+  const [logPageSize, setLogPageSize] = useState(20);
+  const [renameRole, setRenameRole] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const permissions = localPermissions ?? livePermissions;
 
   // ── Invite User State ──────────────────────────────────────────────────────
   const [inviteOpen, setInviteOpen] = useState(false);
@@ -70,14 +85,40 @@ export default function Settings() {
   const [transferDowngradeTo, setTransferDowngradeTo] = useState("admin");
   const [transferring, setTransferring] = useState(false);
 
-  if (role !== "super_admin") {
+  // ── Claim admin (bootstrap on a fresh install) ─────────────────────────────
+  const claimSuperAdmin = async () => {
+    if (!user) return toast.error("Not logged in");
+    const { error } = await (supabase as any)
+      .from("user_roles")
+      .upsert({ user_id: user.id, role: "super_admin" }, { onConflict: "user_id" });
+    if (error) {
+      toast.error("Failed: " + error.message);
+      return;
+    }
+    await logAction("ROLE_CHANGE", "user_roles", user.id, { claimed: "super_admin" });
+    toast.success("Admin access claimed — reloading...");
+    setTimeout(() => window.location.reload(), 900);
+  };
+
+  if (!isUnrestricted(role)) {
+    // Bootstrap: the very first account claims admin here. AdminGuard only lets a
+    // non-admin reach this page while the system has no admin at all.
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] text-center gap-4 animate-fade-up">
-        <Lock className="w-12 h-12 text-muted-foreground/30" />
-        <h2 className="text-xl font-bold">Super Admin Only</h2>
+        <div className="p-4 rounded-2xl bg-amber-500/10">
+          <Crown className="w-10 h-10 text-amber-400" />
+        </div>
+        <h2 className="text-xl font-bold">Claim Admin Access</h2>
         <p className="text-muted-foreground max-w-sm text-sm">
-          The Settings panel is restricted to Super Admins. Contact your super admin to manage roles and access.
+          No administrator has been set up yet. Claim it for this account to manage team
+          members, roles and access. Afterwards, only an admin can grant admin.
         </p>
+        <Button
+          onClick={claimSuperAdmin}
+          className="bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/25 font-bold gap-2 rounded-xl"
+        >
+          <Crown className="w-4 h-4" /> Claim Admin Access
+        </Button>
       </div>
     );
   }
@@ -118,7 +159,7 @@ export default function Settings() {
       if (error) throw error;
       return data;
     },
-    enabled: role === "super_admin" && tab === "audit",
+    enabled: isUnrestricted(role) && tab === "audit",
   });
   
   // ── App Settings Query ─────────────────────────────────────────────────────
@@ -189,20 +230,6 @@ export default function Settings() {
       if (e.message !== "Cancelled") toast.error(e.message);
     },
   });
-
-  // ── Claim Super Admin ──────────────────────────────────────────────────────
-  const claimSuperAdmin = async () => {
-    if (!user) return toast.error("Not logged in");
-    const { error } = await (supabase as any)
-      .from("user_roles")
-      .upsert({ user_id: user.id, role: "super_admin" }, { onConflict: "user_id" });
-    if (error) {
-      toast.error("Failed: " + error.message);
-    } else {
-      toast.success("Super Admin claimed! Reloading...");
-      setTimeout(() => window.location.reload(), 900);
-    }
-  };
 
   // ── Invite New User ────────────────────────────────────────────────────────
   const handleInvite = async () => {
@@ -289,26 +316,111 @@ export default function Settings() {
   };
 
   // ── Permissions helpers ────────────────────────────────────────────────────
-  const togglePerm = (r: Exclude<AppRole, "super_admin">, page: PageKey) => {
-    setPermissions((prev) => {
-      const currentView = prev[r]?.view ?? [];
-      const currentEdit = prev[r]?.edit ?? [];
-      const hasView = currentView.includes(page);
-      const hasEdit = currentEdit.includes(page);
-      let nextView = [...currentView];
-      let nextEdit = [...currentEdit];
-      if (!hasView && !hasEdit) { nextView.push(page); }
-      else if (hasView && !hasEdit) { nextEdit.push(page); }
-      else { nextView = nextView.filter((p) => p !== page); nextEdit = nextEdit.filter((p) => p !== page); }
-      return { ...prev, [r]: { view: nextView, edit: nextEdit } };
+  const togglePerm = (r: string, page: PageKey, action: PermissionAction) => {
+    setLocalPermissions((prev) => {
+      const base = prev ?? livePermissions;
+      const rolePerms = base[r] ?? emptyRolePermissions();
+      const list = rolePerms[action] ?? [];
+      const next = list.includes(page)
+        ? list.filter((p) => p !== page)
+        : [...list, page];
+      return { ...base, [r]: { ...rolePerms, [action]: next } };
     });
     setPermDirty(true);
   };
 
-  const savePerms = () => { savePermissions(permissions); setPermDirty(false); toast.success("Permissions saved"); };
-  const resetPerms = () => { resetPermissions(); setPermissions({ ...DEFAULT_PERMISSIONS }); setPermDirty(false); toast.success("Permissions reset to defaults"); };
+  const savePerms = async () => {
+    if (!localPermissions) return;
+    try {
+      await savePermissions(localPermissions);
+      await logAction("PERMISSION_CHANGE", "app_settings", "permissions", {
+        roles: Object.keys(localPermissions),
+      });
+      setLocalPermissions(null);
+      setPermDirty(false);
+      toast.success("Permissions saved — every signed-in device updates now");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to save permissions");
+    }
+  };
 
-  const configurableRoles: Exclude<AppRole, "super_admin">[] = ["admin", "sales"];
+  const discardPerms = () => {
+    setLocalPermissions(null);
+    setPermDirty(false);
+  };
+
+  const resetPerms = async () => {
+    try {
+      await savePermissions(DEFAULT_PERMISSIONS);
+      await logAction("PERMISSION_CHANGE", "app_settings", "permissions", { reset: true });
+      setLocalPermissions(null);
+      setPermDirty(false);
+      toast.success("Permissions reset to defaults");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to reset permissions");
+    }
+  };
+
+  const addCustomRole = async () => {
+    const key = newRoleKey.trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "_");
+    if (!key) { toast.error("Give the role a name"); return; }
+    if (permissions[key]) { toast.error("That role already exists"); return; }
+    const next = { ...permissions, [key]: emptyRolePermissions() };
+    try {
+      await savePermissions(next);
+      await logAction("PERMISSION_CHANGE", "app_settings", "permissions", { created_role: key });
+      setLocalPermissions(null);
+      setPermDirty(false);
+      setNewRoleKey("");
+      toast.success(`Role "${key}" created with no access — tick what it may do`);
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to create the role");
+    }
+  };
+
+  const saveRoleName = async () => {
+    if (!renameRole) return;
+    const label = renameValue.trim();
+    try {
+      // Labels are cosmetic; the role key stored on users never changes
+      await saveRoleLabels({ ...roleLabels, [renameRole]: label || renameRole });
+      await logAction("PERMISSION_CHANGE", "app_settings", "role_labels", {
+        role: renameRole, label,
+      });
+      setRenameRole(null);
+      setRenameValue("");
+      toast.success("Role renamed");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to rename the role");
+    }
+  };
+
+  const teamPageCount = Math.max(1, Math.ceil(usersData.length / teamPageSize));
+  const safeTeamPage = Math.min(teamPage, teamPageCount - 1);
+  const pagedUsers = usersData.slice(safeTeamPage * teamPageSize, (safeTeamPage + 1) * teamPageSize);
+
+  const logPageCount = Math.max(1, Math.ceil(logs.length / logPageSize));
+  const safeLogPage = Math.min(logPage, logPageCount - 1);
+  const pagedLogs = logs.slice(safeLogPage * logPageSize, (safeLogPage + 1) * logPageSize);
+
+  const matrixRoles = allRoleKeys(permissions);
+  /** Roles that can be assigned to a person. Super admin is claimed or transferred. */
+  const assignableRoles = matrixRoles.filter((r) => r !== "super_admin");
+
+  const RoleOptions = ({ includeSuperAdmin = false }: { includeSuperAdmin?: boolean }) => (
+    <>
+      {includeSuperAdmin && (
+        <SelectItem value="super_admin" className="rounded-lg font-bold text-amber-400">
+          ⭐ Super Admin
+        </SelectItem>
+      )}
+      {assignableRoles.map((r) => (
+        <SelectItem key={r} value={r} className={`rounded-lg ${ROLE_CONFIG[r]?.color ?? ""}`}>
+          {roleLabel(r, roleLabels)}
+        </SelectItem>
+      ))}
+    </>
+  );
   const otherUsers = usersData.filter((u: any) => u.user_id !== user?.id);
 
   return (
@@ -386,10 +498,13 @@ export default function Settings() {
             </div>
           ) : (
             <div className="space-y-3">
-              {usersData.map((u: any) => {
+              {pagedUsers.map((u: any) => {
                 const profile = u.profile;
                 const isSelf = u.user_id === user?.id;
-                const rc = ROLE_CONFIG[u.role] ?? ROLE_CONFIG.mechanic;
+                const rc = ROLE_CONFIG[u.role] ?? {
+                  ...ROLE_CONFIG.mechanic,
+                  label: roleLabel(u.role, roleLabels),
+                };
                 return (
                   <div key={u.id} className={`flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-2xl border transition-all ${isSelf ? "bg-amber-500/5 border-amber-500/20" : "bg-background/40 border-white/5 hover:border-white/10"}`}>
                     <div className="flex items-center gap-4">
@@ -423,10 +538,7 @@ export default function Settings() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent className="glass-panel font-medium rounded-xl">
-                          <SelectItem value="super_admin" className="rounded-lg font-bold text-amber-400">⭐ Super Admin</SelectItem>
-                          <SelectItem value="admin" className="rounded-lg font-bold text-emerald-500">Admin</SelectItem>
-                          <SelectItem value="sales" className="rounded-lg text-blue-400">Sales</SelectItem>
-                          <SelectItem value="mechanic" className="rounded-lg text-violet-400">Mechanic</SelectItem>
+                          <RoleOptions includeSuperAdmin />
                         </SelectContent>
                       </Select>
 
@@ -445,6 +557,15 @@ export default function Settings() {
                   </div>
                 );
               })}
+
+              <CustomPagination
+                page={safeTeamPage}
+                pageCount={teamPageCount}
+                pageSize={teamPageSize}
+                total={usersData.length}
+                onPageChange={setTeamPage}
+                onPageSizeChange={(size) => { setTeamPageSize(size); setTeamPage(0); }}
+              />
             </div>
           )}
         </div>
@@ -454,34 +575,67 @@ export default function Settings() {
       {tab === "permissions" && (
         <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/5 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-64 h-64 bg-violet-500/5 rounded-full blur-[80px] pointer-events-none" />
+
           <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
             <h2 className="text-xl font-bold flex items-center gap-2">
-              <Shield className="h-5 w-5 text-violet-400" /> Permissions Matrix
+              <Shield className="h-5 w-5 text-violet-400" /> Access Matrix
             </h2>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button variant="ghost" size="sm" className="rounded-xl gap-1.5 text-muted-foreground" onClick={resetPerms}>
-                <RotateCcw className="w-3.5 h-3.5" /> Reset
+                <RotateCcw className="w-3.5 h-3.5" /> Reset to defaults
               </Button>
-              <Button size="sm" disabled={!permDirty} className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white gap-1.5" onClick={savePerms}>
-                Save Changes{permDirty ? " *" : ""}
+              {permDirty && (
+                <Button variant="outline" size="sm" className="rounded-xl border-white/10" onClick={discardPerms}>
+                  Discard
+                </Button>
+              )}
+              <Button
+                size="sm"
+                disabled={!permDirty || isSaving}
+                className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white gap-1.5"
+                onClick={savePerms}
+              >
+                {isSaving ? "Saving..." : `Save Changes${permDirty ? " *" : ""}`}
               </Button>
             </div>
           </div>
+
           <p className="text-sm text-muted-foreground mb-6">
-            Click to cycle through: <span className="inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded-md bg-foreground/5 text-muted-foreground"><ToggleLeft className="w-3.5 h-3.5" /> None</span> → <span className="inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded-md bg-blue-500/20 text-blue-500"><Eye className="w-3.5 h-3.5" /> View/Add</span> → <span className="inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded-md bg-emerald-500/20 text-emerald-500"><Pencil className="w-3.5 h-3.5" /> View/Add/Edit</span>. <span className="text-amber-400 font-semibold ml-1">Super Admin</span> always has full access.
+            Tick what each role may do on each page: <span className="font-semibold text-foreground">View</span>,{" "}
+            <span className="font-semibold text-foreground">Add</span>,{" "}
+            <span className="font-semibold text-foreground">Edit</span>,{" "}
+            <span className="font-semibold text-foreground">Delete</span>. Delete is deliberate — it is never
+            implied by Edit. <span className="text-amber-400 font-semibold">Admin</span> always has full access and
+            cannot be locked out.
           </p>
+
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[480px]">
+            <table className="w-full min-w-[680px]">
               <thead>
                 <tr>
-                  <th className="text-left pb-4 text-sm font-semibold text-muted-foreground pr-6 w-44">Page</th>
-                  {configurableRoles.map((r) => {
+                  <th className="text-left pb-2 text-sm font-semibold text-muted-foreground pr-6 w-40 align-bottom">Page</th>
+                  {matrixRoles.map((r) => {
                     const rc = ROLE_CONFIG[r];
+                    const locked = isUnrestricted(r);
                     return (
-                      <th key={r} className="pb-4 text-center">
-                        <span className={`inline-flex items-center gap-1 text-sm font-bold ${rc.color}`}>
-                          {rc.icon}{rc.label}
-                        </span>
+                      <th key={r} className="pb-2 px-3 text-center align-bottom">
+                        <button
+                          type="button"
+                          onClick={() => { setRenameRole(r); setRenameValue(roleLabel(r, roleLabels)); }}
+                          className={`inline-flex items-center gap-1 text-sm font-bold ${rc?.color ?? "text-foreground"} hover:underline`}
+                          title="Rename this role"
+                        >
+                          {rc?.icon ?? <User className="w-3.5 h-3.5" />}
+                          {roleLabel(r, roleLabels)}
+                          {locked && <Lock className="w-3 h-3 opacity-60" />}
+                        </button>
+                        <div className="flex justify-center gap-1 mt-2">
+                          {PERMISSION_ACTIONS.map((a) => (
+                            <span key={a} className="w-7 text-[9px] uppercase tracking-wide text-muted-foreground">
+                              {a === "create" ? "Add" : a === "delete" ? "Del" : a === "view" ? "View" : "Edit"}
+                            </span>
+                          ))}
+                        </div>
                       </th>
                     );
                   })}
@@ -490,20 +644,42 @@ export default function Settings() {
               <tbody>
                 {ALL_PAGES.map((page) => (
                   <tr key={page.key} className="border-t border-white/5 hover:bg-white/[0.02] transition-colors">
-                    <td className="py-3.5 pr-6 text-sm font-medium text-foreground">{page.label}</td>
-                    {configurableRoles.map((r) => {
-                      const hasView = (permissions[r]?.view ?? []).includes(page.key);
-                      const hasEdit = (permissions[r]?.edit ?? []).includes(page.key);
-                      let btnClass = "bg-foreground/5 text-muted-foreground/30 hover:bg-foreground/10";
-                      let title = "Grant View access";
-                      let icon = <ToggleLeft className="w-5 h-5" />;
-                      if (hasView && !hasEdit) { btnClass = "bg-blue-500/20 text-blue-500 hover:bg-blue-500/30"; title = "Grant Edit access"; icon = <Eye className="w-5 h-5" />; }
-                      else if (hasView && hasEdit) { btnClass = "bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/30"; title = "Revoke all access"; icon = <Pencil className="w-4 h-4" />; }
+                    <td className="py-3 pr-6 text-sm font-medium text-foreground">{page.label}</td>
+                    {matrixRoles.map((r) => {
+                      const locked = isUnrestricted(r);
+                      const rolePerms = permissions[r] ?? emptyRolePermissions();
+                      const hasView = locked || (rolePerms.view ?? []).includes(page.key);
                       return (
-                        <td key={r} className="py-3.5 text-center">
-                          <button onClick={() => togglePerm(r, page.key)} className={`inline-flex items-center justify-center w-9 h-9 rounded-xl transition-all ${btnClass}`} title={title}>
-                            {icon}
-                          </button>
+                        <td key={r} className="py-3 px-3">
+                          <div className="flex justify-center gap-1">
+                            {PERMISSION_ACTIONS.map((action) => {
+                              const on = locked || (rolePerms[action] ?? []).includes(page.key);
+                              // Without View the rest of the row is moot; the stored
+                              // lists stay independent either way
+                              const moot = !hasView && action !== "view" && on;
+                              const tone = !on
+                                ? "bg-foreground/5 text-muted-foreground/30 hover:bg-foreground/10"
+                                : action === "delete"
+                                ? "bg-rose-500/20 text-rose-500 hover:bg-rose-500/30"
+                                : action === "view"
+                                ? "bg-blue-500/20 text-blue-500 hover:bg-blue-500/30"
+                                : "bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/30";
+                              return (
+                                <button
+                                  key={action}
+                                  type="button"
+                                  disabled={locked}
+                                  aria-label={`${action} ${page.label} for ${roleLabel(r, roleLabels)}`}
+                                  aria-pressed={on}
+                                  title={locked ? "Admin always has full access" : `${action} ${page.label}`}
+                                  onClick={() => togglePerm(r, page.key, action)}
+                                  className={`w-7 h-7 rounded-lg text-[10px] font-bold transition-all ${tone} ${locked ? "cursor-not-allowed opacity-70" : ""} ${moot ? "opacity-40" : ""}`}
+                                >
+                                  {on ? "✓" : ""}
+                                </button>
+                              );
+                            })}
+                          </div>
                         </td>
                       );
                     })}
@@ -512,12 +688,58 @@ export default function Settings() {
               </tbody>
             </table>
           </div>
-          <p className="text-xs text-muted-foreground mt-6 border-t border-white/5 pt-4">
-            Permissions are saved locally and apply immediately on next page navigation.
-            {permDirty && <span className="ml-2 text-amber-400 font-semibold">⚠ Unsaved changes</span>}
-          </p>
+
+          <div className="mt-6 pt-5 border-t border-white/5 flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <Label className="text-xs text-muted-foreground">Create a custom role</Label>
+              <Input
+                value={newRoleKey}
+                onChange={(e) => setNewRoleKey(e.target.value)}
+                placeholder="e.g. accountant"
+                className="h-10 w-56 rounded-xl bg-background/50 border-white/10"
+              />
+            </div>
+            <Button size="sm" variant="outline" onClick={addCustomRole}
+              className="h-10 rounded-xl border-white/10 gap-1.5">
+              <PlusCircle className="w-4 h-4" /> Add role
+            </Button>
+            <p className="text-xs text-muted-foreground flex-1 min-w-[200px]">
+              A new role starts with no access and appears here and in the role selects.
+              {permDirty && <span className="ml-2 text-amber-400 font-semibold">⚠ Unsaved changes</span>}
+            </p>
+          </div>
         </div>
       )}
+
+      {/* Rename a role — the label is cosmetic, the stored key never changes */}
+      <Dialog open={!!renameRole} onOpenChange={(open) => !open && setRenameRole(null)}>
+        <DialogContent className="rounded-3xl glass-panel border-white/10">
+          <DialogHeader>
+            <DialogTitle>Rename role</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">
+              Display name for <span className="font-mono">{renameRole}</span>
+            </Label>
+            <Input
+              value={renameValue}
+              onChange={(e) => setRenameValue(e.target.value)}
+              className="h-11 rounded-xl bg-background/50 border-white/10"
+            />
+            <p className="text-[11px] text-muted-foreground">
+              Only the label changes. The role key stored on each user stays the same.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setRenameRole(null)} className="rounded-xl border-white/10">
+              Cancel
+            </Button>
+            <Button onClick={saveRoleName} className="rounded-xl bg-violet-500 hover:bg-violet-600 text-white">
+              Save name
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── AUDIT TAB ── */}
       {tab === "audit" && (
@@ -540,7 +762,7 @@ export default function Settings() {
             </div>
           ) : (
             <div className="space-y-2">
-              {logs.map((log: any) => {
+              {pagedLogs.map((log: any) => {
                 const userName = log.profiles?.display_name || log.details?._user_name || null;
                 const actionColor = ACTION_COLORS[log.action] || "bg-foreground/10 text-foreground";
                 const description = describeLog(log);
@@ -579,6 +801,16 @@ export default function Settings() {
                   </div>
                 );
               })}
+
+              <CustomPagination
+                page={safeLogPage}
+                pageCount={logPageCount}
+                pageSize={logPageSize}
+                total={logs.length}
+                onPageChange={setLogPage}
+                onPageSizeChange={(size) => { setLogPageSize(size); setLogPage(0); }}
+                sizes={[20, 50, 100]}
+              />
             </div>
           )}
         </div>
@@ -682,8 +914,7 @@ export default function Settings() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="glass-panel rounded-xl">
-                  <SelectItem value="admin" className="rounded-lg text-emerald-500 font-bold">Admin</SelectItem>
-                  <SelectItem value="sales" className="rounded-lg text-blue-400">Sales</SelectItem>
+                  <RoleOptions />
                 </SelectContent>
               </Select>
             </div>
@@ -728,7 +959,7 @@ export default function Settings() {
                 <SelectContent className="glass-panel rounded-xl">
                   {otherUsers.map((u: any) => (
                     <SelectItem key={u.user_id} value={u.user_id} className="rounded-lg">
-                      {u.profile?.display_name || "Unknown User"} — <span className="opacity-60">{ROLE_CONFIG[u.role]?.label}</span>
+                      {u.profile?.display_name || "Unknown User"} — <span className="opacity-60">{roleLabel(u.role, roleLabels)}</span>
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -741,8 +972,7 @@ export default function Settings() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent className="glass-panel rounded-xl">
-                  <SelectItem value="admin" className="rounded-lg text-emerald-500 font-bold">Admin</SelectItem>
-                  <SelectItem value="sales" className="rounded-lg text-blue-400">Sales</SelectItem>
+                  <RoleOptions />
                 </SelectContent>
               </Select>
             </div>

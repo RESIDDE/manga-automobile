@@ -9,7 +9,7 @@ import {
   Loader2, ArrowRight, MessageSquare, Briefcase, X
 } from "lucide-react";
 import { toast } from "sonner";
-import logo from "@/assets/logo.png";
+import logoPrint from "@/assets/logo-print.png";
 
 export default function PublicBooking() {
   const [formData, setFormData] = useState({
@@ -97,7 +97,7 @@ export default function PublicBooking() {
           </div>
           <h2 className="text-4xl font-black mb-4 tracking-tight text-gray-900">Request Received!</h2>
           <p className="text-gray-500 text-lg mb-10 leading-relaxed">
-            Thank you for reaching out to Amu Global Motors. Our team will review your proposal and get back to you shortly.
+            Thank you for reaching out to Manga Automobiles. Our team will review your proposal and get back to you shortly.
           </p>
           <Button 
             onClick={() => window.location.reload()}
@@ -117,13 +117,13 @@ export default function PublicBooking() {
       <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-amber-500/5 rounded-full blur-[120px] pointer-events-none" />
       <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] bg-blue-500/5 rounded-full blur-[120px] pointer-events-none" />
       
-      <header className="p-6 md:p-10 z-20 sticky top-0 bg-white/90 backdrop-blur-md border-b border-gray-200 shadow-sm">
+      <header className="p-4 sm:p-6 md:p-10 z-20 sticky top-0 bg-white/90 backdrop-blur-md border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <img src={logo} alt="AMU Logo" className="h-12 w-12 rounded-2xl object-contain bg-gray-100 p-1 border border-gray-200" />
+          <div className="flex items-center gap-3">
+            <img src={logoPrint} alt="Manga Automobiles" className="h-9 sm:h-11 w-auto object-contain shrink-0" />
             <div>
-              <h1 className="text-2xl font-black tracking-tighter uppercase leading-none text-gray-900">AMU GLOBAL</h1>
-              <p className="text-[10px] uppercase font-bold tracking-[0.3em] text-amber-500 mt-1">Motors & Logistics</p>
+              <h1 className="text-xl sm:text-2xl font-black tracking-tighter uppercase leading-none text-gray-900">MANGA</h1>
+              <p className="text-[10px] uppercase font-bold tracking-[0.3em] text-amber-500 mt-1">Automobiles</p>
             </div>
           </div>
           <div className="hidden md:flex gap-6 items-center">
@@ -254,8 +254,7 @@ export default function PublicBooking() {
       <footer className="p-12 border-t border-gray-200 z-20 relative bg-white">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-8">
            <div className="flex items-center gap-2">
-             <img src={logo} alt="Logo" className="h-6 w-6 object-contain" />
-             <span className="font-black text-sm tracking-widest text-gray-600">AMU GLOBAL MOTORS © 2024</span>
+             <span className="font-black text-sm tracking-widest text-gray-600">MANGA AUTOMOBILES © 2024</span>
            </div>
            <p className="text-xs font-bold uppercase tracking-[0.2em] text-gray-400">Crafting Excellence in Automotive Logistics</p>
         </div>

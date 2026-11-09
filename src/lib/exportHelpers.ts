@@ -1,8 +1,9 @@
 import { toast } from "sonner";
 import { getPrintHeaderHTML, getPrintWatermarkHTML } from "@/components/PrintHeader";
 import { getPrintFooterHTML } from "@/components/PrintFooter";
-import html2canvas from "html2canvas";
-import { jsPDF } from "jspdf";
+// Loaded on demand: see the note in documentExport.ts
+const loadHtml2Canvas = async () => (await import("html2canvas")).default;
+const loadJsPDF = async () => (await import("jspdf")).jsPDF;
 
 export async function downloadAsPDF(html: string, filename: string) {
   const container = document.createElement("div");
@@ -19,6 +20,7 @@ export async function downloadAsPDF(html: string, filename: string) {
 
   try {
     toast.info("Generating PDF...");
+    const html2canvas = await loadHtml2Canvas();
     const canvas = await html2canvas(container, {
       scale: 2,
       useCORS: true,
@@ -30,6 +32,7 @@ export async function downloadAsPDF(html: string, filename: string) {
     const imgWidth = 595; // A4 width in pts
     const imgHeight = (canvas.height * imgWidth) / canvas.width;
     
+    const jsPDF = await loadJsPDF();
     const pdf = new jsPDF({
       orientation: "portrait",
       unit: "pt",
@@ -116,20 +119,27 @@ export async function downloadTableAsPDF(title: string, data: Record<string, any
 
 export function triggerPrint(html: string) {
   const win = window.open("", "_blank");
-  if (win) {
-    win.document.write(html);
-    win.document.close();
-    // Wait for images to load before printing
-    win.onload = () => {
-      win.print();
-    };
-    // Fallback if onload doesn't trigger correctly in some browsers
-    setTimeout(() => {
-      if (win.document.readyState === 'complete') {
-        win.print();
-      }
-    }, 1000);
+  if (!win) {
+    toast.error("Print was blocked. Allow pop-ups for this site and try again.");
+    return;
   }
+
+  win.document.write(html);
+  win.document.close();
+
+  // Print once, whichever path gets there first: onload (waits for images) or
+  // the fallback for browsers where onload doesn't fire on a written document.
+  let printed = false;
+  const printOnce = () => {
+    if (printed) return;
+    printed = true;
+    win.print();
+  };
+
+  win.onload = printOnce;
+  setTimeout(() => {
+    if (win.document.readyState === "complete") printOnce();
+  }, 1000);
 }
 
 export async function downloadAsPNG(html: string, filename: string) {
@@ -147,6 +157,7 @@ export async function downloadAsPNG(html: string, filename: string) {
 
   try {
     toast.info("Generating image...");
+    const html2canvas = await loadHtml2Canvas();
     const canvas = await html2canvas(container, {
       scale: 2,
       useCORS: true,

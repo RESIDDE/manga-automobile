@@ -40,34 +40,41 @@
     --warning-foreground: 0 0% 100%;
   }
 
+  /* Tuned to the dashboard bento: black canvas, lime accent, hairline borders. */
   .dark {
-    --background: 224 71% 4%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 11%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222 47% 11%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 230 100% 65%;
-    --primary-foreground: 0 0% 100%;
-    --secondary: 217 33% 18%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 33% 18%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 230 100% 65%;
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 100%;
+    --popover: 240 6% 7%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 66 100% 56%;
+    --primary-foreground: 240 6% 5%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 56%;
+    --accent: 0 0% 14%;
     --accent-foreground: 0 0% 100%;
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217 33% 18%;
-    --input: 217 33% 18%;
-    --ring: 230 100% 65%;
-    --sidebar-background: 222 47% 11%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 230 100% 65%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 217 33% 18%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 217 33% 18%;
-    --sidebar-ring: 230 100% 65%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 16%;
+    --input: 0 0% 16%;
+    --ring: 66 100% 56%;
+    --sidebar-background: 0 0% 7%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 66 100% 56%;
+    --sidebar-primary-foreground: 240 6% 5%;
+    --sidebar-accent: 0 0% 14%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 16%;
+    --sidebar-ring: 66 100% 56%;
+    --gradient-start: 66 100% 56%;
+    --gradient-end: 86 90% 52%;
+    --success: 142 70% 45%;
+    --success-foreground: 240 6% 5%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 240 6% 5%;
   }
 }
 
@@ -121,6 +128,52 @@
   }
 }
 
+/* ─── Printable A4 documents ───────────────────────────────────────────────── */
+/* One sheet of A4, white, black text. The same element is what previews on
+   screen, what prints, and what gets rasterised into a PDF/PNG/JPEG. */
+.print-pages-container {
+  --doc-zoom: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.print-document-page {
+  background: #ffffff;
+  color: #000000;
+  width: 100%;
+  box-shadow: 0 20px 60px -20px rgb(0 0 0 / 0.45);
+  position: relative;
+  overflow: hidden;
+}
+
+/* On small screens scale the sheet down instead of letting it overflow sideways */
+@media (max-width: 839px) {
+  .print-pages-container {
+    --doc-zoom: 0.92;
+  }
+  .print-document-page {
+    zoom: var(--doc-zoom);
+  }
+}
+
+@media print {
+  .print-document-page {
+    zoom: var(--print-zoom, 1);
+    box-shadow: none !important;
+    width: 210mm !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .print-pages-container {
+    display: block !important;
+    gap: 0 !important;
+  }
+}
+
 @media print {
   /* Reset layout for physical paper */
   body, html {
@@ -160,8 +213,15 @@
 
   /* Page breaks and sizing */
   @page {
-    margin: 1cm;
-    size: A4;
+    margin: 0;
+    size: auto;
+  }
+
+  /* App chrome never prints */
+  .print\:hidden,
+  [data-sidebar],
+  nav[aria-label="Main"] {
+    display: none !important;
   }
 
   /* Force signatures and images to print colors if needed */

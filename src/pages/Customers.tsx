@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
+import { CustomerMatchHint } from "@/components/CustomerMatchHint";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,12 +17,12 @@ import {
 import {
   Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious,
 } from "@/components/ui/pagination";
-import { PlusCircle, Pencil, Trash2, Users, QrCode, Phone, Mail, MapPin, Search } from "lucide-react";
+import { PlusCircle, Pencil, Trash2, Users, Phone, Mail, MapPin, Search } from "lucide-react";
 import { toast } from "sonner";
 import { SignaturePad } from "@/components/SignaturePad";
-import { QrSignDialog } from "@/lib/qrHelpers";
 import { useAuth } from "@/hooks/useAuth";
-import { canEdit } from "@/lib/permissions";
+import { usePermissions } from "@/hooks/usePermissions";
+import { canCreate, canDelete, canEdit } from "@/lib/permissions";
 
 type Customer = {
   id: string;
@@ -36,7 +38,10 @@ const emptyForm = { name: "", email: "", phone: "", address: "", notes: "", sign
 
 export default function Customers() {
   const { role } = useAuth();
-  const hasEdit = canEdit(role, "customers");
+  const { permissions } = usePermissions();
+  const hasCreate = canCreate(role, "customers", permissions);
+  const hasEdit = canEdit(role, "customers", permissions);
+  const hasDelete = canDelete(role, "customers", permissions);
 
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
@@ -44,9 +49,10 @@ export default function Customers() {
 
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editId, setEditId] = useState<string | null>(null);
-  const [form, setForm] = useState(emptyForm);
+  const [form, setForm, clearDraft, startNewForm] = useFormPersistence(
+    "manga_customer_draft", emptyForm, !!editId, editId
+  );
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const [qrId, setQrId] = useState<string | null>(null);
   const queryClient = useQueryClient();
 
   const { data: customers = [], isLoading } = useQuery({
@@ -87,6 +93,7 @@ export default function Customers() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
       toast.success(editId ? "Customer updated" : "Customer added");
+      resetForm();
       closeDialog();
     },
     onError: () => toast.error("Failed to save customer"),
@@ -107,7 +114,9 @@ export default function Customers() {
     },
   });
 
-  const closeDialog = () => { setDialogOpen(false); setEditId(null); setForm(emptyForm); };
+  // Closing the dialog keeps the draft, so an accidental dismissal loses nothing.
+  const closeDialog = () => { setDialogOpen(false); setEditId(null); };
+  const resetForm = () => { clearDraft(); setForm(emptyForm); };
 
   const openEdit = (c: Customer) => {
     setEditId(c.id);
@@ -132,9 +141,11 @@ export default function Customers() {
           </p>
         </div>
         <div className="shrink-0">
-          <Button onClick={() => { setForm(emptyForm); setEditId(null); setDialogOpen(true); }} size="lg" className="rounded-2xl shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-all bg-emerald-500 hover:bg-emerald-600 text-white">
+          {hasCreate && (
+          <Button onClick={() => { setEditId(null); startNewForm(); setDialogOpen(true); }} size="lg" className="rounded-2xl shadow-lg shadow-emerald-500/25 hover:shadow-emerald-500/40 transition-all bg-emerald-500 hover:bg-emerald-600 text-white">
             <PlusCircle className="mr-2 h-5 w-5" /> Add Customer
           </Button>
+          )}
         </div>
       </div>
 
@@ -163,7 +174,9 @@ export default function Customers() {
           </div>
           <h2 className="text-xl font-bold mb-2">No customers yet.</h2>
           <p className="text-muted-foreground max-w-sm mb-6">Start building your client database by adding your first customer.</p>
-          <Button onClick={() => { setForm(emptyForm); setEditId(null); setDialogOpen(true); }} className="rounded-xl shadow-lg shadow-emerald-500/20 bg-emerald-500 hover:bg-emerald-600 text-white">Add Customer</Button>
+          {hasCreate && (
+            <Button onClick={() => { setEditId(null); startNewForm(); setDialogOpen(true); }} className="rounded-xl shadow-lg shadow-emerald-500/20 bg-emerald-500 hover:bg-emerald-600 text-white">Add Customer</Button>
+          )}
         </div>
       ) : (
         <div className="space-y-6">
@@ -204,21 +217,20 @@ export default function Customers() {
                   </div>
                 </div>
 
-                <div className="flex gap-2 mt-6 pt-4 border-t border-white/5 justify-end">
-                  {hasEdit && (
-                    <>
+                {(hasEdit || hasDelete) && (
+                  <div className="flex gap-2 mt-6 pt-4 border-t border-white/5 justify-end">
+                    {hasEdit && (
                       <Button variant="ghost" size="sm" className="h-8 rounded-lg hover:bg-foreground/10 hover:text-foreground text-muted-foreground transition-all" onClick={() => openEdit(c)}>
                         <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
                       </Button>
-                      <Button variant="ghost" size="sm" className="h-8 rounded-lg hover:bg-emerald-500/10 hover:text-emerald-500 text-muted-foreground transition-all" onClick={() => setQrId(c.id)}>
-                        <QrCode className="h-3.5 w-3.5 mr-1.5" /> QR Sign
-                      </Button>
-                      <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all" onClick={() => setDeleteId(c.id)}>
+                    )}
+                    {hasDelete && (
+                      <Button variant="ghost" size="icon" aria-label="Delete customer" className="h-8 w-8 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all" onClick={() => setDeleteId(c.id)}>
                         <Trash2 className="h-3.5 w-3.5" />
                       </Button>
-                    </>
-                  )}
-                </div>
+                    )}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -264,7 +276,6 @@ export default function Customers() {
       )}
 
       {/* QR Dialog */}
-      <QrSignDialog open={!!qrId} onOpenChange={() => setQrId(null)} type="customer" id={qrId} />
 
       {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog(); }}>
@@ -289,6 +300,24 @@ export default function Customers() {
                  <Input className="rounded-xl h-11 bg-background/50 border-white/10 focus-visible:ring-emerald-500" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} placeholder="+234..." />
               </div>
             </div>
+            <CustomerMatchHint
+              name={form.name}
+              phone={form.phone}
+              excludeId={editId}
+              onPick={(c) => {
+                // Edit the record on file instead of adding a second one
+                setEditId(c.id);
+                setForm({
+                  name: c.name ?? "",
+                  email: c.email ?? "",
+                  phone: c.phone ?? "",
+                  address: c.address ?? "",
+                  notes: "",
+                  signature_data: "",
+                });
+                toast.info(`Editing the existing record for ${c.name}`);
+              }}
+            />
             <div className="space-y-2">
                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Address</Label>
                <Input className="rounded-xl h-11 bg-background/50 border-white/10 focus-visible:ring-emerald-500" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="123 Main St..." />
@@ -305,6 +334,7 @@ export default function Customers() {
             </div>
           </div>
           <div className="p-6 border-t border-white/5 bg-foreground/5 flex justify-end gap-3">
+            <Button variant="ghost" onClick={resetForm} className="rounded-xl hover:bg-white/5">Clear</Button>
             <Button variant="outline" onClick={closeDialog} className="rounded-xl border-white/10 hover:bg-white/5">Cancel</Button>
             <Button onClick={() => upsertMutation.mutate()} disabled={!form.name || upsertMutation.isPending} className="rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white border-0 shadow-lg shadow-emerald-500/20">{editId ? "Save Changes" : "Create Customer"}</Button>
           </div>

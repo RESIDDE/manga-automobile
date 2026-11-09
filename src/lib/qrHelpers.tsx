@@ -6,7 +6,7 @@ import {
 import { Copy, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 
-export function getSignUrl(type: "customer" | "repair" | "inspection" | "sale", id: string) {
+export function getSignUrl(type: "customer" | "sale", id: string) {
   return `${window.location.origin}/sign/${type}/${id}`;
 }
 
@@ -18,7 +18,7 @@ export function QrSignDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  type: "customer" | "repair" | "inspection" | "sale";
+  type: "customer" | "sale";
   id: string | null;
 }) {
   if (!id) return null;

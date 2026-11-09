@@ -2,6 +2,8 @@ import { format } from "date-fns";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
+import { CustomerMatchHint } from "@/components/CustomerMatchHint";
 import { Button } from "@/components/ui/button";
 import { 
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
@@ -23,6 +25,9 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
+import { usePermissions } from "@/hooks/usePermissions";
+import { canCreate, canDelete, canEdit } from "@/lib/permissions";
+import { CustomPagination } from "@/components/CustomPagination";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RechartsTooltip } from "recharts";
@@ -37,18 +42,25 @@ const STATUS_COLORS = {
 
 export default function Meetings() {
   const { role } = useAuth();
+  const { permissions } = usePermissions();
+  const hasCreate = canCreate(role, "meetings", permissions);
+  const hasEdit = canEdit(role, "meetings", permissions);
+  const hasDelete = canDelete(role, "meetings", permissions);
   const navigate = useNavigate();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [isAddingMeeting, setIsAddingMeeting] = useState(false);
-  const [newMeeting, setNewMeeting] = useState({
-    fullName: "",
-    phone: "",
-    email: "",
-    intent: "",
-    bookingDate: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
-  });
+  const [newMeeting, setNewMeeting, clearMeetingDraft] = useFormPersistence(
+    "manga_meeting_draft",
+    {
+      fullName: "",
+      phone: "",
+      email: "",
+      intent: "",
+      bookingDate: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
+    }
+  );
   const [adminFile, setAdminFile] = useState<File | null>(null);
 
   const queryClient = useQueryClient();
@@ -101,6 +113,7 @@ export default function Meetings() {
       toast.success("Meeting logged successfully");
       setIsAddingMeeting(false);
       setAdminFile(null);
+      clearMeetingDraft();
       setNewMeeting({
         fullName: "",
         phone: "",
@@ -136,6 +149,9 @@ export default function Meetings() {
     },
   });
 
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(10);
+
   const filtered = meetings.filter(m => {
     const fullName = m.full_name || "";
     const intent = m.intent || "";
@@ -144,6 +160,10 @@ export default function Meetings() {
     const matchesStatus = statusFilter === "all" || m.status === statusFilter;
     return matchesSearch && matchesStatus;
   });
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, pageCount - 1);
+  const paged = filtered.slice(safePage * pageSize, (safePage + 1) * pageSize);
 
   const getSafeDate = (dateStr: string) => {
     try {
@@ -193,9 +213,11 @@ export default function Meetings() {
            <Button variant="outline" className="rounded-xl" onClick={() => navigate('/book')}>
               <ExternalLink className="mr-2 h-4 w-4" /> Open Public Form
            </Button>
-           <Button className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/20" onClick={() => setIsAddingMeeting(true)}>
-              <Plus className="mr-2 h-4 w-4" /> New Meeting
-           </Button>
+           {hasCreate && (
+             <Button className="rounded-xl bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/20" onClick={() => setIsAddingMeeting(true)}>
+                <Plus className="mr-2 h-4 w-4" /> New Meeting
+             </Button>
+           )}
         </div>
       </div>
 
@@ -270,7 +292,7 @@ export default function Meetings() {
             className="pl-10 h-11 rounded-xl bg-background/50 border-white/10"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
           <SelectTrigger className="w-full sm:w-48 h-11 rounded-xl border-white/10 bg-background/50">
             <SelectValue placeholder="All Statuses" />
           </SelectTrigger>
@@ -314,7 +336,7 @@ export default function Meetings() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((m) => (
+              {paged.map((m) => (
                 <TableRow key={m.id} className="border-white/5 group hover:bg-white/[0.02] transition-colors">
                   <TableCell className="px-6 py-4">
                     <div className="flex items-center gap-3">
@@ -374,24 +396,38 @@ export default function Meetings() {
                       >
                          <Eye className="h-4 w-4" /> View
                       </Button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        onClick={() => {
-                          if (confirm("Are you sure you want to delete this record?")) {
-                            deleteMutation.mutate(m.id);
-                          }
-                        }}
-                        className="h-9 w-9 rounded-xl text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
-                      >
-                         <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {hasDelete && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          aria-label="Delete meeting"
+                          onClick={() => {
+                            if (confirm("Are you sure you want to delete this record?")) {
+                              deleteMutation.mutate(m.id);
+                            }
+                          }}
+                          className="h-9 w-9 rounded-xl text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
+                        >
+                           <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>
               ))}
             </TableBody>
           </Table>
+
+          <div className="p-4 border-t border-white/5">
+            <CustomPagination
+              page={safePage}
+              pageCount={pageCount}
+              pageSize={pageSize}
+              total={filtered.length}
+              onPageChange={setPage}
+              onPageSizeChange={(size) => { setPageSize(size); setPage(0); }}
+            />
+          </div>
         </div>
       )}
 
@@ -445,12 +481,12 @@ export default function Meetings() {
                       <Button 
                         key={s} 
                         variant={selectedMeeting.status === s ? "default" : "outline"}
-                        onClick={() => updateStatusMutation.mutate({ id: selectedMeeting.id, status: s })}
+                        onClick={() => hasEdit && updateStatusMutation.mutate({ id: selectedMeeting.id, status: s })}
                         className={cn(
                           "rounded-xl h-12 px-6 font-bold transition-all",
                           selectedMeeting.status === s ? "bg-amber-500 hover:bg-amber-600 text-white shadow-lg shadow-amber-500/20" : "border-white/10"
                         )}
-                        disabled={updateStatusMutation.isPending}
+                        disabled={!hasEdit || updateStatusMutation.isPending}
                       >
                          {s === 'Approved' && <CheckCircle2 className="h-4 w-4 mr-2 text-emerald-400" />}
                          {s === 'Rejected' && <XCircle className="h-4 w-4 mr-2 text-red-500" />}
@@ -500,6 +536,17 @@ export default function Meetings() {
                 <Label>Email Address</Label>
                 <Input value={newMeeting.email} onChange={e => setNewMeeting({...newMeeting, email: e.target.value})} placeholder="email@example.com" className="rounded-xl bg-white/5 border-white/10" />
              </div>
+
+             <CustomerMatchHint
+                name={newMeeting.fullName}
+                phone={newMeeting.phone}
+                onPick={(c) => setNewMeeting({
+                  ...newMeeting,
+                  fullName: c.name ?? newMeeting.fullName,
+                  phone: c.phone ?? newMeeting.phone,
+                  email: c.email ?? newMeeting.email,
+                })}
+             />
 
              <div className="space-y-2">
                 <Label>Meeting intent / Summary</Label>

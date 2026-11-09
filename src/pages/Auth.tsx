@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ShieldCheck, Mail, Lock, User, Loader2, Phone, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
-import logo from "@/assets/logo.png";
+import { BrandMark, BrandLockup } from "@/components/BrandMark";
 import { logAction } from "@/lib/logger";
 
 type Mode = "login" | "register";
@@ -63,22 +63,22 @@ export default function Auth() {
       {/* ─── Decorative left panel (hidden on mobile) ─── */}
       <div className="hidden lg:flex lg:w-[55%] relative overflow-hidden flex-col items-center justify-center p-12 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black">
         {/* Glow blobs */}
-        <div className="absolute top-[-20%] left-[-10%] w-[70%] h-[70%] bg-amber-500/20 rounded-full blur-[140px] pointer-events-none animate-pulse" />
+        <div className="absolute top-[-20%] left-[-10%] w-[70%] h-[70%] bg-primary/20 rounded-full blur-[140px] pointer-events-none animate-pulse" />
         <div className="absolute bottom-[-20%] right-[-10%] w-[60%] h-[60%] bg-primary/15 rounded-full blur-[120px] pointer-events-none" />
 
         {/* Grid texture overlay */}
         <div className="absolute inset-0 opacity-[0.03]" style={{ backgroundImage: 'linear-gradient(rgba(255,255,255,.15) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.15) 1px, transparent 1px)', backgroundSize: '40px 40px' }} />
 
         <div className="relative z-10 max-w-md text-center">
-          <div className="inline-flex p-4 rounded-3xl bg-amber-500/10 border border-amber-500/20 mb-8 shadow-2xl shadow-amber-500/20">
-            <img src={logo} alt="AMU Global Motors" className="w-20 h-20 rounded-2xl object-contain" />
+          <div className="inline-flex p-4 rounded-3xl bg-primary/10 border border-primary/20 mb-8 shadow-2xl shadow-primary/20">
+            <BrandLockup width={240} />
           </div>
           <h1 className="text-5xl font-bold text-white tracking-tight mb-4 leading-tight">
-            AMU Global<br />
-            <span className="text-amber-500">Motors</span>
+            Manga<br />
+            <span className="text-primary">Automobiles</span>
           </h1>
           <p className="text-white/50 text-lg leading-relaxed">
-            Complete dealership management platform. Track vehicles, customers, sales, repairs, and revenue — all in one place.
+            Complete dealership management platform. Track vehicles, customers, sales and revenue — all in one place.
           </p>
 
           <div className="mt-12 grid grid-cols-3 gap-4">
@@ -99,15 +99,15 @@ export default function Auth() {
       {/* ─── Right panel — Auth form ─── */}
       <div className="flex-1 flex items-center justify-center p-6 sm:p-10 relative">
         {/* Mobile glow */}
-        <div className="lg:hidden absolute top-[-15%] right-[-15%] w-[60%] h-[60%] bg-amber-500/15 rounded-full blur-[100px] pointer-events-none" />
+        <div className="lg:hidden absolute top-[-15%] right-[-15%] w-[60%] h-[60%] bg-primary/15 rounded-full blur-[100px] pointer-events-none" />
         <div className="lg:hidden absolute bottom-[-10%] left-[-10%] w-[50%] h-[50%] bg-primary/10 rounded-full blur-[80px] pointer-events-none" />
 
         <div className="w-full max-w-md relative z-10 animate-fade-up">
           {/* Mobile logo */}
           <div className="flex lg:hidden items-center gap-3 mb-8">
-            <img src={logo} alt="AMU Global Motors" className="w-12 h-12 rounded-xl object-contain border border-border/50 shadow" />
+            <BrandMark size={44} />
             <div>
-              <h1 className="text-xl font-extrabold text-foreground">AMU Global Motors</h1>
+              <h1 className="text-xl font-extrabold text-foreground">Manga Automobiles</h1>
               <p className="text-xs text-muted-foreground">Dealership Management</p>
             </div>
           </div>
@@ -119,7 +119,7 @@ export default function Auth() {
             <p className="text-muted-foreground mt-2 text-sm">
               {mode === "login"
                 ? "Sign in to access the admin dashboard."
-                : "Register to get started with AMU Global Motors."}
+                : "Register to get started with Manga Automobiles."}
             </p>
           </div>
 
@@ -131,7 +131,7 @@ export default function Auth() {
                 onClick={() => setMode(m)}
                 className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 ${
                   mode === m
-                    ? "bg-amber-500 text-white shadow-lg shadow-amber-500/30"
+                    ? "bg-primary text-white shadow-lg shadow-primary/30"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
@@ -149,8 +149,8 @@ export default function Auth() {
                   <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     required type="email"
-                    placeholder="admin@amuglobalmotors.com"
-                    className="pl-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-amber-500 font-medium"
+                    placeholder="admin@mangaautomobiles.com"
+                    className="pl-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-primary font-medium"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                   />
@@ -165,7 +165,7 @@ export default function Auth() {
                     required
                     type={showPassword ? "text" : "password"}
                     placeholder="••••••••"
-                    className="pl-10 pr-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-amber-500 font-medium"
+                    className="pl-10 pr-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-primary font-medium"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
@@ -177,7 +177,7 @@ export default function Auth() {
 
               <Button
                 disabled={loading} type="submit"
-                className="w-full h-12 mt-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold shadow-lg shadow-amber-500/30 transition-all"
+                className="w-full h-12 mt-2 rounded-xl bg-primary hover:bg-amber-600 text-white font-bold shadow-lg shadow-primary/30 transition-all"
               >
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Sign In to Dashboard"}
               </Button>
@@ -193,7 +193,7 @@ export default function Auth() {
                   <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     required placeholder="John Doe"
-                    className="pl-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-amber-500 font-medium"
+                    className="pl-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-primary font-medium"
                     value={fullName}
                     onChange={(e) => setFullName(e.target.value)}
                   />
@@ -206,7 +206,7 @@ export default function Auth() {
                   <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     required type="tel" placeholder="+234 800 000 0000"
-                    className="pl-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-amber-500 font-medium"
+                    className="pl-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-primary font-medium"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                   />
@@ -219,7 +219,7 @@ export default function Auth() {
                   <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
                     required type="email" placeholder="john@beeteeautos.com"
-                    className="pl-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-amber-500 font-medium"
+                    className="pl-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-primary font-medium"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                   />
@@ -234,7 +234,7 @@ export default function Auth() {
                     required
                     type={showPassword ? "text" : "password"}
                     placeholder="Min. 6 characters"
-                    className="pl-10 pr-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-amber-500 font-medium"
+                    className="pl-10 pr-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-primary font-medium"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                   />
@@ -246,20 +246,20 @@ export default function Auth() {
 
               <Button
                 disabled={loading} type="submit"
-                className="w-full h-12 mt-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-bold shadow-lg shadow-amber-500/30 transition-all"
+                className="w-full h-12 mt-2 rounded-xl bg-primary hover:bg-amber-600 text-white font-bold shadow-lg shadow-primary/30 transition-all"
               >
                 {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Create Admin Account"}
               </Button>
 
               <p className="text-xs text-center text-muted-foreground">
                 🔒 Access is managed by your administrator. <br />
-                Contact AMU Global Motors IT if you're having trouble.
+                Contact Manga Automobiles IT if you're having trouble.
               </p>
             </form>
           )}
 
           <div className="mt-10 pt-6 border-t border-foreground/5 flex items-center gap-3">
-            <ShieldCheck className="h-4 w-4 text-amber-500 shrink-0" />
+            <ShieldCheck className="h-4 w-4 text-primary shrink-0" />
             <p className="text-xs text-muted-foreground">
               This is a secure, admin-only portal. Unauthorized access is prohibited.
             </p>

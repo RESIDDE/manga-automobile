@@ -13,6 +13,20 @@ export default defineConfig(({ mode }) => ({
     },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
+  build: {
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Split the heavy, rarely-changing libraries out of the app chunk
+          react: ["react", "react-dom", "react-router-dom"],
+          charts: ["recharts"],
+          supabase: ["@supabase/supabase-js"],
+          query: ["@tanstack/react-query"],
+        },
+      },
+    },
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),

@@ -22,9 +22,15 @@ import {
 import { X, Upload } from "lucide-react";
 import VehicleMakeModelSelector from "@/components/VehicleMakeModelSelector";
 import { useAuth } from "@/hooks/useAuth";
-import { canEdit } from "@/lib/permissions";
+import { usePermissions } from "@/hooks/usePermissions";
+import { canCreate, canEdit } from "@/lib/permissions";
 import { CurrencyInput } from "@/components/CurrencyInput";
 import { toast } from "sonner";
+import { VIN_MAX_LENGTH } from "@/lib/constants";
+import { useFormPersistence } from "@/hooks/useFormPersistence";
+import { SignaturePad } from "@/components/SignaturePad";
+import { logAction } from "@/lib/logger";
+import { isMissingSchema, omitKeys, warnOnce } from "@/lib/dbCompat";
 
 interface FormData {
   make: string;
@@ -44,6 +50,15 @@ interface FormData {
   date_stored: string;
   num_keys: string;
   source_company: string;
+  source_company_phone: string;
+  source_rep_name: string;
+  source_rep_phone: string;
+  source_rep_signature: string;
+  accepted_by_name: string;
+  accepted_by_phone: string;
+  accepted_date: string;
+  accepted_signature: string;
+  inventory_type: string;
   condition: string;
 }
 
@@ -65,6 +80,15 @@ const emptyForm: FormData = {
   date_stored: "",
   num_keys: "0",
   source_company: "",
+  source_company_phone: "",
+  source_rep_name: "",
+  source_rep_phone: "",
+  source_rep_signature: "",
+  accepted_by_name: "",
+  accepted_by_phone: "",
+  accepted_date: "",
+  accepted_signature: "",
+  inventory_type: "main",
   condition: "Used",
 };
 
@@ -73,14 +97,20 @@ export default function VehicleForm() {
   const isEdit = !!id;
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const [form, setForm] = useState<FormData>(emptyForm);
+  // A part-filled vehicle survives an accidental tab close. New vehicles share one
+  // draft; an edit is keyed to its record (and still reloads from the row on open).
+  const [form, setForm, clearDraft] = useFormPersistence<FormData>(
+    "manga_vehicle_draft", emptyForm, isEdit, id
+  );
   const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [existingImages, setExistingImages] = useState<{ id: string; image_url: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const { role } = useAuth();
-  const hasEdit = canEdit(role, "vehicles");
+  const { permissions } = usePermissions();
+  const hasEdit = canEdit(role, "vehicles", permissions);
+  const hasCreate = canCreate(role, "vehicles", permissions);
 
   useEffect(() => {
     if (isEdit && !hasEdit) {
@@ -137,6 +167,15 @@ export default function VehicleForm() {
         description: v.description || "",
         date_arrived: v.date_arrived || "",
         date_stored: v.date_stored || "",
+        source_company_phone: v.source_company_phone || "",
+        source_rep_name: v.source_rep_name || "",
+        source_rep_phone: v.source_rep_phone || "",
+        source_rep_signature: v.source_rep_signature || "",
+        accepted_by_name: v.accepted_by_name || "",
+        accepted_by_phone: v.accepted_by_phone || "",
+        accepted_date: v.accepted_date || "",
+        accepted_signature: v.accepted_signature || "",
+        inventory_type: v.inventory_type || "main",
         num_keys: v.num_keys?.toString() || "0",
         source_company: v.source_company || "",
         condition: v.condition || "Used",
@@ -155,7 +194,7 @@ export default function VehicleForm() {
     if (!form.make.trim()) e.make = "Make is required";
     if (!form.model.trim()) e.model = "Model is required";
     if (!form.year || isNaN(Number(form.year))) e.year = "Valid year required";
-    if (form.vin && form.vin.length > 17) e.vin = "VIN must be ≤17 characters";
+    if (form.vin && form.vin.length > VIN_MAX_LENGTH) e.vin = `Chassis number must be ≤${VIN_MAX_LENGTH} characters`;
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -203,6 +242,14 @@ export default function VehicleForm() {
     setSubmitting(true);
 
     try {
+      // Columns that arrive with a pending migration. If the database does not
+      // have them yet, the vehicle is still saved without them.
+      const NEW_COLUMNS = [
+        "inventory_type", "source_company_phone", "source_rep_name", "source_rep_phone",
+        "source_rep_signature", "accepted_by_name", "accepted_by_phone", "accepted_date",
+        "accepted_signature",
+      ];
+
       const payload: any = {
         make: form.make.trim(),
         model: form.model.trim(),
@@ -221,29 +268,61 @@ export default function VehicleForm() {
         date_stored: form.date_stored || null,
         num_keys: parseInt(form.num_keys) || 0,
         source_company: form.source_company.trim() || null,
+        source_company_phone: form.source_company_phone.trim() || null,
+        source_rep_name: form.source_rep_name.trim() || null,
+        source_rep_phone: form.source_rep_phone.trim() || null,
+        source_rep_signature: form.source_rep_signature || null,
+        accepted_by_name: form.accepted_by_name.trim() || null,
+        accepted_by_phone: form.accepted_by_phone.trim() || null,
+        accepted_date: form.accepted_date || null,
+        accepted_signature: form.accepted_signature || null,
+        inventory_type: form.inventory_type || "main",
         condition: form.condition,
       };
 
       if (isEdit) {
-        const { error } = await supabase
+        let { error } = await supabase
           .from("vehicles")
           .update(payload)
           .eq("id", id!);
+        if (error && isMissingSchema(error, NEW_COLUMNS)) {
+          warnOnce("vehicle_columns", () => toast.warning(
+            "Saved without the source and acceptance details — the database migration is still pending."
+          ));
+          ({ error } = await supabase
+            .from("vehicles")
+            .update(omitKeys(payload, NEW_COLUMNS))
+            .eq("id", id!));
+        }
         if (error) throw error;
         await uploadImages(id!);
         toast.success("Vehicle updated successfully");
       } else {
-        const { data, error } = await supabase
+        let { data, error } = await supabase
           .from("vehicles")
           .insert(payload)
           .select()
           .single();
+        if (error && isMissingSchema(error, NEW_COLUMNS)) {
+          warnOnce("vehicle_columns", () => toast.warning(
+            "Saved without the source and acceptance details — the database migration is still pending."
+          ));
+          ({ data, error } = await supabase
+            .from("vehicles")
+            .insert(omitKeys(payload, NEW_COLUMNS))
+            .select()
+            .single());
+        }
         if (error) throw error;
         await uploadImages(data.id);
         toast.success("Vehicle added successfully");
       }
 
       queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+      await logAction(isEdit ? "UPDATE" : "CREATE", "Vehicle", id ?? null, {
+        make: payload.make, model: payload.model, vin: payload.vin,
+      });
+      clearDraft();
       navigate("/vehicles");
     } catch (err: any) {
       toast.error(err.message || "Failed to save vehicle");
@@ -332,17 +411,17 @@ export default function VehicleForm() {
             <div className="space-y-1">
               <div className="flex justify-between items-center">
                 <Label htmlFor="vin">Chassis Number (VIN)</Label>
-                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors ${form.vin.length === 17 ? 'bg-emerald-500 text-white' : 'bg-violet-500/10 text-violet-500'}`}>
-                  {form.vin.length} / 17
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition-colors ${form.vin.length === VIN_MAX_LENGTH ? 'bg-emerald-500 text-white' : 'bg-violet-500/10 text-violet-500'}`}>
+                  {form.vin.length} / {VIN_MAX_LENGTH}
                 </span>
               </div>
               <Input
                 id="vin"
                 value={form.vin}
-                onChange={(e) => setForm({ ...form, vin: e.target.value.toUpperCase() })}
-                className={`font-mono uppercase transition-all ${form.vin.length === 17 ? 'border-emerald-500 ring-emerald-500/20' : ''}`}
-                placeholder="e.g. JN1AZ4EH4FM550000"
-                maxLength={17}
+                onChange={(e) => setForm({ ...form, vin: e.target.value.toUpperCase().slice(0, VIN_MAX_LENGTH) })}
+                className={`font-mono uppercase transition-all ${form.vin.length === VIN_MAX_LENGTH ? 'border-emerald-500 ring-emerald-500/20' : ''}`}
+                placeholder="e.g. JN1AZ4EH4FM"
+                maxLength={VIN_MAX_LENGTH}
               />
               {errors.vin && <p className="text-sm text-destructive">{errors.vin}</p>}
             </div>
@@ -429,7 +508,63 @@ export default function VehicleForm() {
             {field("date_arrived", "Date Arrived", "date")}
             {field("date_stored", "Date Stored", "date")}
             {field("num_keys", "Number of Keys", "number")}
-            {field("source_company", "Source Company")}
+            <div className="space-y-1">
+              <Label htmlFor="inventory_type">Inventory</Label>
+              <Select
+                value={form.inventory_type}
+                onValueChange={(v) => setForm({ ...form, inventory_type: v })}
+              >
+                <SelectTrigger id="inventory_type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="main">Stock (for sale)</SelectItem>
+                  <SelectItem value="service">Workshop only (not for sale)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11px] text-muted-foreground">
+                Workshop cars stay out of the inventory lists and off every sale and quote picker.
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Source Company / Owner</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            {field("source_company", "Company / Owner Name")}
+            {field("source_company_phone", "Company Phone")}
+            {field("source_rep_name", "Representative Name")}
+            {field("source_rep_phone", "Representative Phone")}
+            <div className="space-y-1 md:col-span-2">
+              <Label>Representative Signature</Label>
+              <div className="rounded-2xl overflow-hidden border bg-background/50 max-w-md">
+                <SignaturePad
+                  value={form.source_rep_signature}
+                  onChange={(v) => setForm({ ...form, source_rep_signature: v })}
+                />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Acceptance — who received the vehicle</CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-4 md:grid-cols-2">
+            {field("accepted_by_name", "Received By")}
+            {field("accepted_by_phone", "Phone")}
+            {field("accepted_date", "Date Received", "date")}
+            <div className="space-y-1 md:col-span-2">
+              <Label>Receiver Signature</Label>
+              <div className="rounded-2xl overflow-hidden border bg-background/50 max-w-md">
+                <SignaturePad
+                  value={form.accepted_signature}
+                  onChange={(v) => setForm({ ...form, accepted_signature: v })}
+                />
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -524,6 +659,13 @@ export default function VehicleForm() {
             onClick={() => navigate("/vehicles")}
           >
             Cancel
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            onClick={() => { clearDraft(); setForm(emptyForm); toast.success("Form cleared"); }}
+          >
+            Clear Form
           </Button>
         </div>
       </form>

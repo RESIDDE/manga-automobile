@@ -41,11 +41,15 @@ export function CurrencyInput({
     const isNegative = rawValue.startsWith("-");
     const cleanRawValue = rawValue.replace(/[^\d.]/g, "");
     
-    // Create new event with unformatted value
+    // Create new event with unformatted value. `name` and `id` are copied
+    // explicitly: spreading a DOM element yields no own properties, so a parent
+    // using a generic `handleChange` keyed by `e.target.name` would see undefined.
     const newEvent = {
        ...e,
        target: {
          ...e.target,
+         name: e.target.name,
+         id: e.target.id,
          value: (isNegative ? "-" : "") + cleanRawValue
        }
     };

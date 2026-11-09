@@ -1,61 +1,121 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { SignaturePad } from "@/components/SignaturePad";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { toast } from "sonner";
-import { CheckCircle, DollarSign, Car, User, Calendar, ShieldCheck, AlertCircle } from "lucide-react";
+import { AlertCircle, CheckCircle, PenLine, ShieldCheck } from "lucide-react";
+import {
+  SaleReceiptDocument, type ReceiptBankDetails, type ReceiptLineItem,
+} from "@/components/SaleReceiptDocument";
+import { withSchemaFallback } from "@/lib/dbCompat";
+import { formatNaira } from "@/lib/numberToWords";
+import { derivePaymentState } from "@/lib/receipts";
 
+const SALE_SELECT_WITH_PAYMENTS = `
+  *,
+  customer:customers(name, phone, email, address),
+  sale_vehicles(price, vehicle:vehicles(make, model, year, trim, vin, color)),
+  sale_payments(*)
+`;
+
+const SALE_SELECT_BASE = `
+  *,
+  customer:customers(name, phone, email, address),
+  sale_vehicles(price, vehicle:vehicles(make, model, year, trim, vin, color))
+`;
+
+/**
+ * Public signing page for a sale. The customer sees the *actual* receipt they
+ * will be given — the same <SaleReceiptDocument /> the office prints — with
+ * their signature appearing on it as they draw, so nothing about the document
+ * is a surprise after they sign.
+ */
 export default function SignSale() {
   const { id } = useParams<{ id: string }>();
-  const [submitted, setSubmitted] = useState(false);
   const [signature, setSignature] = useState("");
+  const [submitted, setSubmitted] = useState(false);
   const [saving, setSaving] = useState(false);
 
   const { data: sale, isLoading } = useQuery({
     queryKey: ["sale-sign", id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from("sales")
-        .select(`
-          *,
-          customer:customers(name, phone),
-          sale_vehicles(
-            price,
-            vehicle:vehicles(make, model, year, vin, color)
-          )
-        `)
-        .eq("id", id)
-        .single();
-      
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!id
+    enabled: !!id,
+    queryFn: async () =>
+      // sale_payments arrives with a migration; without it the receipt falls
+      // back to the stored payment status rather than failing to load at all.
+      withSchemaFallback(
+        () => supabase.from("sales").select(SALE_SELECT_WITH_PAYMENTS).eq("id", id).single(),
+        () => supabase.from("sales").select(SALE_SELECT_BASE).eq("id", id).single(),
+        ["sale_payments"]
+      ) as Promise<any>,
   });
+
+  // Bank details are nice to have here; a public visitor may not be allowed to
+  // read settings, in which case the panel is simply left off the document.
+  const { data: bank = {} as ReceiptBankDetails } = useQuery({
+    queryKey: ["sale-sign-bank"],
+    queryFn: async () => {
+      const { data, error } = await (supabase as any)
+        .from("app_settings")
+        .select("key, value")
+        .in("key", ["bank_name", "account_number", "account_name"]);
+      if (error) return {} as ReceiptBankDetails;
+      const map: Record<string, string> = {};
+      (data ?? []).forEach((row: any) => { map[row.key] = row.value ?? ""; });
+      return {
+        bank_name: map.bank_name || "",
+        account_number: map.account_number || "",
+        account_name: map.account_name || "",
+      } as ReceiptBankDetails;
+    },
+  });
+
+  const items: ReceiptLineItem[] = useMemo(() => {
+    if (!sale) return [];
+    const links: any[] = sale.sale_vehicles ?? [];
+    const total = Number(sale.sale_price || 0);
+    const share = links.length ? total / links.length : total;
+
+    if (links.length === 0) {
+      return [{ id: `${sale.id}-vehicle`, description: "Vehicle", amount: total }];
+    }
+
+    return links.map((link, i) => {
+      const v = link.vehicle ?? {};
+      const own = Number(link.price || 0);
+      return {
+        id: `${sale.id}-${i}`,
+        description: [v.year, v.make, v.model].filter(Boolean).join(" ") || "Vehicle",
+        vin: v.vin ?? null,
+        color: v.color ?? null,
+        trim: v.trim ?? null,
+        amount: own > 0 ? own : share,
+      };
+    });
+  }, [sale]);
 
   const handleSubmit = async () => {
     if (!signature || !id) return;
     setSaving(true);
-    
+
     const { error } = await supabase
       .from("sales")
-      .update({ 
+      .update({
         buyer_signature: signature,
-        buyer_signature_date: new Date().toISOString().split("T")[0]
+        buyer_signature_date: new Date().toISOString().split("T")[0],
       })
       .eq("id", id);
-      
+
     setSaving(false);
     if (error) {
       console.error("Signature save error:", error);
-      toast.error(`Could not save signature: ${error.message || 'Permission denied'}`);
-    } else {
-      setSubmitted(true);
-      toast.success("Signature recorded successfully!");
+      toast.error(`Could not save signature: ${error.message || "Permission denied"}`);
+      return;
     }
+    setSubmitted(true);
+    toast.success("Signature recorded");
   };
 
   if (isLoading) {
@@ -73,163 +133,159 @@ export default function SignSale() {
     return (
       <div className="min-h-screen flex items-center justify-center p-4 bg-background">
         <Card className="glass-panel p-8 text-center rounded-3xl border-white/10 max-w-md">
-           <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
-           <h2 className="text-xl font-bold">Invalid Signing Link</h2>
-           <p className="text-muted-foreground mt-2">This sale record could not be found or the link has expired.</p>
+          <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
+          <h2 className="text-xl font-bold">Invalid signing link</h2>
+          <p className="text-muted-foreground mt-2">
+            This sale record could not be found, or the link has expired.
+          </p>
         </Card>
       </div>
     );
   }
 
-  if (submitted) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-background">
-        <Card className="w-full max-w-md text-center rounded-3xl overflow-hidden glass-panel border-white/10 shadow-2xl">
-          <CardContent className="py-12">
-            <div className="bg-emerald-500/10 p-5 rounded-full inline-block mb-6">
-              <CheckCircle className="h-12 w-12 text-emerald-500 mx-auto" />
-            </div>
-            <h2 className="text-2xl font-bold text-foreground">Sale Documents Signed!</h2>
-            <p className="text-muted-foreground mt-3 px-6">Thank you. Your digital signature has been recorded. You can now close this page.</p>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  const state = derivePaymentState(sale);
+  const alreadySigned = !!sale.buyer_signature && !submitted;
+  // The signature lands on the document as it is drawn, so the customer can see
+  // exactly where it goes before committing.
+  const documentSale = {
+    ...sale,
+    buyer_signature: signature || sale.buyer_signature || null,
+    buyer_signature_date:
+      signature && !sale.buyer_signature_date
+        ? new Date().toISOString().split("T")[0]
+        : sale.buyer_signature_date,
+  };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 bg-background relative overflow-hidden py-12">
-      {/* Decorative background gradients */}
-      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-violet-500/10 rounded-full blur-[120px]" />
-      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-amber-500/10 rounded-full blur-[120px]" />
+    <div className="min-h-screen bg-background relative">
+      <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-violet-500/10 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-amber-500/10 rounded-full blur-[120px] pointer-events-none" />
 
-      <div className="w-full max-w-2xl space-y-6 relative z-10">
-        <div className="text-center mb-8">
-           <div className="bg-violet-500/10 p-4 rounded-2xl inline-block mb-4">
-             <DollarSign className="h-8 w-8 text-violet-500" />
-           </div>
-           <h1 className="text-3xl font-heading font-extrabold tracking-tight">Purchase Agreement</h1>
-           <p className="text-muted-foreground mt-2">Please review your purchase details before signing.</p>
+      <div className="relative z-10 max-w-[232mm] mx-auto px-4 py-8 space-y-6">
+        {/* Instruction only — the document below carries its own title and number */}
+        <div className="text-center">
+          <div className="bg-violet-500/10 p-3 rounded-2xl inline-block mb-3">
+            <ShieldCheck className="h-7 w-7 text-violet-500" />
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-heading font-extrabold tracking-tight">
+            Please review and sign
+          </h1>
+          <p className="text-muted-foreground mt-2 text-sm max-w-xl mx-auto">
+            Below is the exact document you will receive. Read it through, then sign at the bottom —
+            your signature appears on the document as you draw it.
+          </p>
         </div>
 
-        <Card className="glass-panel border-white/10 rounded-3xl shadow-xl overflow-hidden">
-          <CardHeader className="bg-foreground/5 border-b border-white/5 p-6">
-             <CardTitle className="text-lg font-bold flex items-center gap-2">
-                <ShieldCheck className="w-5 h-5 text-violet-500" />
-                Agreement Summary {(sale as any).sale_number && <span className="text-xs font-mono bg-violet-500/10 px-2 py-0.5 rounded-full ml-auto">№ {(sale as any).sale_number.padStart(5, '0')}</span>}
-             </CardTitle>
-          </CardHeader>
-          <CardContent className="p-0">
-             <div className="p-6 space-y-6">
-                {/* Sale Info */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                   <div className="space-y-1">
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Customer Name</p>
-                      <p className="font-semibold flex items-center gap-2"><User className="w-4 h-4 text-violet-500/50" /> {(sale.customer as any)?.name}</p>
-                   </div>
-                   <div className="space-y-1">
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Sale Date</p>
-                      <p className="font-semibold flex items-center gap-2"><Calendar className="w-4 h-4 text-violet-500/50" /> {new Date(sale.sale_date).toLocaleDateString()}</p>
-                   </div>
-                </div>
-
-                {/* Vehicles List */}
-                <div className="space-y-3 pt-4 border-t border-white/5">
-                   <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold mb-2">Purchased Vehicle(s)</p>
-                   <div className="space-y-3">
-                      {sale.sale_vehicles && (sale.sale_vehicles as any[]).length > 0 ? (
-                        (sale.sale_vehicles as any[]).map((sv, idx) => (
-                          <div key={idx} className="bg-foreground/5 rounded-2xl p-4 flex items-center gap-4 border border-white/5">
-                            <div className="w-12 h-12 rounded-xl bg-background/50 flex items-center justify-center text-violet-500 shadow-inner">
-                                <Car className="w-6 h-6" />
-                            </div>
-                            <div className="flex-1">
-                                <div className="flex items-center gap-2">
-                                  <span className="bg-violet-500/10 text-violet-500 text-[10px] font-bold px-2 py-0.5 rounded-full">{sv.vehicle?.year}</span>
-                                  <p className="font-bold text-lg leading-none">{sv.vehicle?.make} {sv.vehicle?.model}</p>
-                                </div>
-                                <div className="flex items-center gap-2 mt-1">
-                                  <span className="w-3 h-3 rounded-full border border-white/10" style={{ backgroundColor: sv.vehicle?.color?.toLowerCase() || 'gray' }} />
-                                  <p className="text-xs text-muted-foreground font-medium uppercase tracking-wider">{sv.vehicle?.color} • {sv.vehicle?.vin || "No VIN"}</p>
-                                </div>
-                            </div>
-                            <div className="text-right">
-                                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tight">Price</p>
-                                <p className="font-extrabold text-violet-500">₦{Number(sv.price || 0).toLocaleString()}</p>
-                            </div>
-                          </div>
-                        ))
-                      ) : sale.vehicle_id ? (
-                        /* Fallback for old single-vehicle sales */
-                        <div className="bg-foreground/5 rounded-2xl p-4 flex items-center gap-4 border border-white/5">
-                           <div className="w-12 h-12 rounded-xl bg-background/50 flex items-center justify-center text-violet-500 shadow-inner">
-                              <Car className="w-6 h-6" />
-                           </div>
-                           <div className="flex-1">
-                              <p className="font-bold text-lg leading-none">Vehicle Details</p>
-                              <p className="text-xs text-muted-foreground">Detailed specifications available in office.</p>
-                           </div>
-                           <div className="text-right">
-                              <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-tight">Total Price</p>
-                              <p className="font-extrabold text-violet-500">₦{Number(sale.sale_price).toLocaleString()}</p>
-                           </div>
-                        </div>
-                      ) : (
-                        <p className="text-sm text-center text-muted-foreground py-4">No vehicle details found for this record.</p>
-                      )}
-                   </div>
-                </div>
-
-                {/* Financial Summary */}
-                <div className="pt-4 border-t border-white/5 flex flex-col md:flex-row justify-between items-center gap-4">
-                   <div>
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Payment Methods</p>
-                      <p className="text-sm font-medium mt-1 uppercase opacity-80">{sale.payment_type?.replace('_', ' ')} • <span className="text-emerald-500">{sale.payment_status?.replace('_', ' ')}</span></p>
-                   </div>
-                   <div className="text-center md:text-right">
-                      <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-bold">Total Amount</p>
-                      <p className="text-3xl font-extrabold text-foreground tracking-tight">₦{Number(sale.sale_price).toLocaleString()}</p>
-                   </div>
-                </div>
-             </div>
-
-             {/* IMPORTANT DISCLAIMER */}
-             <div className="bg-amber-500/10 border-y border-amber-500/10 p-6 flex items-start gap-4">
-                <AlertCircle className="w-6 h-6 text-amber-500 shrink-0 mt-0.5" />
-                <div>
-                   <h4 className="font-bold text-amber-500 uppercase tracking-wider text-xs">Security Note & Refund Policy</h4>
-                    <p className="text-muted-foreground text-sm mt-1 leading-relaxed">
-                       By providing your digital signature below, you confirm the details above are correct and acknowledge our policy: <strong className="text-foreground underline underline-offset-4 decoration-amber-500/50 uppercase tracking-tight">Notice: No refund of money after payment.</strong>
-                    </p>
-                    <p className="text-[11px] text-muted-foreground/80 mt-2 font-medium italic">
-                       NB: In case the depositor decides not to go on with the transaction, and he/she decides to take his/her money back, he/she will only collect it after the said car is sold.
-                    </p>
-                </div>
-             </div>
-
-             {/* Signature Pad */}
-             <div className="p-8 space-y-6">
-                <div className="space-y-4">
-                  <div className="rounded-2xl overflow-hidden border border-white/10 bg-background/50 group hover:border-violet-500/30 transition-colors">
-                    <SignaturePad value={signature} onChange={setSignature} />
-                  </div>
-                  <p className="text-[10px] text-center text-muted-foreground uppercase tracking-widest font-bold opacity-50">Buyer Digital Signature</p>
-                </div>
-
-                <Button 
-                  onClick={handleSubmit} 
-                  disabled={!signature || saving} 
-                  className="w-full h-14 rounded-2xl bg-violet-500 hover:bg-violet-600 text-white font-bold shadow-lg shadow-violet-500/20 active:scale-[0.98] transition-all text-lg"
+        {submitted ? (
+          <Card className="glass-panel border-white/10 rounded-3xl shadow-xl">
+            <CardContent className="py-10 text-center">
+              <div className="bg-emerald-500/10 p-5 rounded-full inline-block mb-5">
+                <CheckCircle className="h-11 w-11 text-emerald-500" />
+              </div>
+              <h2 className="text-xl font-bold">Signed — thank you</h2>
+              <p className="text-muted-foreground mt-2 text-sm max-w-md mx-auto">
+                Your signature has been recorded on the document below. A copy will be issued to
+                you by {sale.rep_name || "Manga Automobiles"}. You can close this page.
+              </p>
+            </CardContent>
+          </Card>
+        ) : alreadySigned ? (
+          <Card className="glass-panel border-emerald-500/20 rounded-3xl">
+            <CardContent className="py-6 flex items-start gap-4">
+              <CheckCircle className="w-6 h-6 text-emerald-500 shrink-0 mt-0.5" />
+              <div>
+                <h2 className="font-bold">This document is already signed</h2>
+                <p className="text-sm text-muted-foreground mt-1">
+                  Signed on{" "}
+                  {sale.buyer_signature_date
+                    ? new Date(sale.buyer_signature_date).toLocaleDateString("en-GB")
+                    : "file"}
+                  . It is shown below for your records — sign again only if the dealership asks you to.
+                </p>
+                <Button
+                  variant="outline"
+                  className="rounded-xl border-white/10 mt-3"
+                  onClick={() => {
+                    // Let them re-sign deliberately rather than by accident
+                    setSignature("");
+                    document.getElementById("sign-panel")?.scrollIntoView({ behavior: "smooth" });
+                  }}
                 >
-                  {saving ? "Submitting..." : "Sign & Finalize Purchase"}
+                  <PenLine className="h-4 w-4 mr-2" /> Sign again
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ) : null}
 
-                <div className="pt-4 text-center">
-                  <p className="text-[11px] text-muted-foreground opacity-60">
-                    This is a legally binding digital signature. Sales representative: <strong>{sale.rep_name || "AMU Global Motors"}</strong>
+        {/* The document itself — the same component the office prints */}
+        <div className="print-pages-container">
+          <SaleReceiptDocument
+            sale={documentSale}
+            customer={sale.customer ?? {}}
+            items={items}
+            bank={bank}
+          />
+        </div>
+
+        {/* Signing panel */}
+        <Card id="sign-panel" className="glass-panel border-white/10 rounded-3xl shadow-xl overflow-hidden print:hidden">
+          <div className="bg-amber-500/10 border-b border-amber-500/10 p-5 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+            <div>
+              <h4 className="font-bold text-amber-500 uppercase tracking-wider text-[11px]">
+                Refund policy
+              </h4>
+              <p className="text-muted-foreground text-sm mt-1 leading-relaxed">
+                By signing you confirm the details on the document above are correct and accept that{" "}
+                <strong className="text-foreground">no refund of money is made after payment</strong>.
+                If you decide not to go on with the transaction, your money is returned only after
+                the said car is sold.
+              </p>
+            </div>
+          </div>
+
+          <CardContent className="p-6 space-y-5">
+            <div className="grid grid-cols-3 gap-3">
+              {[
+                { label: "Total", value: formatNaira(state.total) },
+                { label: "Amount paid", value: formatNaira(state.totalPaid) },
+                { label: "Balance due", value: formatNaira(state.balance) },
+              ].map((tile) => (
+                <div key={tile.label} className="rounded-2xl bg-foreground/5 border border-white/5 p-3 text-center">
+                  <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">
+                    {tile.label}
                   </p>
+                  <p className="text-sm sm:text-base font-bold mt-1">{tile.value}</p>
                 </div>
-             </div>
+              ))}
+            </div>
+
+            <div className="space-y-3">
+              <p className="text-[10px] text-center text-muted-foreground uppercase tracking-widest font-bold">
+                Sign here — buyer
+              </p>
+              <div className="rounded-2xl overflow-hidden border border-white/10 bg-background/50 hover:border-violet-500/30 transition-colors">
+                <SignaturePad value={signature} onChange={setSignature} />
+              </div>
+              <p className="text-[11px] text-center text-muted-foreground">
+                Use your finger on a phone, or your mouse on a computer. Your signature appears on
+                the Buyer line of the document above.
+              </p>
+            </div>
+
+            <Button
+              onClick={handleSubmit}
+              disabled={!signature || saving}
+              className="w-full h-14 rounded-2xl bg-violet-500 hover:bg-violet-600 text-white font-bold shadow-lg shadow-violet-500/20 active:scale-[0.98] transition-all text-base"
+            >
+              {saving ? "Submitting..." : "Sign & accept this document"}
+            </Button>
+
+            <p className="text-[11px] text-center text-muted-foreground opacity-70">
+              This is a legally binding digital signature. Sales representative:{" "}
+              <strong>{sale.rep_name || "Manga Automobiles"}</strong>
+            </p>
           </CardContent>
         </Card>
       </div>

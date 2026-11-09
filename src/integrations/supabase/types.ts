@@ -32,6 +32,7 @@ export type Database = {
           note: string | null
           signature: string | null
           rep_name: string | null
+          owner_rep_name: string | null
           rep_signature: string | null
           rep_signature_date: string | null
           created_by: string | null
@@ -53,6 +54,7 @@ export type Database = {
           note?: string | null
           signature?: string | null
           rep_name?: string | null
+          owner_rep_name?: string | null
           rep_signature?: string | null
           rep_signature_date?: string | null
           created_by?: string | null
@@ -74,9 +76,223 @@ export type Database = {
           note?: string | null
           signature?: string | null
           rep_name?: string | null
+          owner_rep_name?: string | null
           rep_signature?: string | null
           rep_signature_date?: string | null
           created_by?: string | null
+        }
+        Relationships: []
+      }
+      sales_agreements: {
+        Row: {
+          id: string
+          created_at: string
+          agreement_date: string | null
+          seller_name: string
+          seller_address: string | null
+          seller_phone: string | null
+          seller_id_type: string | null
+          buyer_name: string
+          buyer_address: string | null
+          buyer_phone: string | null
+          buyer_id_type: string | null
+          vehicle_make: string
+          vehicle_year_model: string | null
+          vehicle_color: string | null
+          vehicle_engine_number: string | null
+          vehicle_chassis: string | null
+          vehicle_plate_number: string | null
+          sale_price: string | null
+          payment_method: string | null
+          note: string | null
+          seller_signature: string | null
+          buyer_signature: string | null
+          seller_witness_name: string | null
+          seller_witness_signature: string | null
+          buyer_witness_name: string | null
+          buyer_witness_signature: string | null
+          rep_name: string | null
+          rep_signature: string | null
+          rep_signature_date: string | null
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          agreement_date?: string | null
+          seller_name: string
+          seller_address?: string | null
+          seller_phone?: string | null
+          seller_id_type?: string | null
+          buyer_name: string
+          buyer_address?: string | null
+          buyer_phone?: string | null
+          buyer_id_type?: string | null
+          vehicle_make: string
+          vehicle_year_model?: string | null
+          vehicle_color?: string | null
+          vehicle_engine_number?: string | null
+          vehicle_chassis?: string | null
+          vehicle_plate_number?: string | null
+          sale_price?: string | null
+          payment_method?: string | null
+          note?: string | null
+          seller_signature?: string | null
+          buyer_signature?: string | null
+          seller_witness_name?: string | null
+          seller_witness_signature?: string | null
+          buyer_witness_name?: string | null
+          buyer_witness_signature?: string | null
+          rep_name?: string | null
+          rep_signature?: string | null
+          rep_signature_date?: string | null
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          agreement_date?: string | null
+          seller_name?: string
+          seller_address?: string | null
+          seller_phone?: string | null
+          seller_id_type?: string | null
+          buyer_name?: string
+          buyer_address?: string | null
+          buyer_phone?: string | null
+          buyer_id_type?: string | null
+          vehicle_make?: string
+          vehicle_year_model?: string | null
+          vehicle_color?: string | null
+          vehicle_engine_number?: string | null
+          vehicle_chassis?: string | null
+          vehicle_plate_number?: string | null
+          sale_price?: string | null
+          payment_method?: string | null
+          note?: string | null
+          seller_signature?: string | null
+          buyer_signature?: string | null
+          seller_witness_name?: string | null
+          seller_witness_signature?: string | null
+          buyer_witness_name?: string | null
+          buyer_witness_signature?: string | null
+          rep_name?: string | null
+          rep_signature?: string | null
+          rep_signature_date?: string | null
+          created_by?: string | null
+        }
+        Relationships: []
+      }
+      performance_quotes: {
+        Row: {
+          id: string
+          customer_id: string | null
+          customer_name: string | null
+          customer_phone: string | null
+          customer_email: string | null
+          customer_address: string | null
+          total_amount: number
+          quote_date: string
+          status: string
+          notes: string | null
+          quote_url: string | null
+          bank_name: string | null
+          account_number: string | null
+          account_name: string | null
+          vat_percentage: number | null
+          vat_amount: number | null
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          customer_id?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          customer_email?: string | null
+          customer_address?: string | null
+          total_amount?: number
+          quote_date?: string
+          status?: string
+          notes?: string | null
+          quote_url?: string | null
+          bank_name?: string | null
+          account_number?: string | null
+          account_name?: string | null
+          vat_percentage?: number | null
+          vat_amount?: number | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          customer_id?: string | null
+          customer_name?: string | null
+          customer_phone?: string | null
+          customer_email?: string | null
+          customer_address?: string | null
+          total_amount?: number
+          quote_date?: string
+          status?: string
+          notes?: string | null
+          quote_url?: string | null
+          bank_name?: string | null
+          account_number?: string | null
+          account_name?: string | null
+          vat_percentage?: number | null
+          vat_amount?: number | null
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      performance_quote_items: {
+        Row: {
+          id: string
+          quote_id: string
+          vehicle_id: string | null
+          vehicle_description: string | null
+          vin: string | null
+          base_price: number
+          has_duty: boolean
+          duty_price: number | null
+          quantity: number
+          condition: string | null
+          transmission: string | null
+          cylinders: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          quote_id: string
+          vehicle_id?: string | null
+          vehicle_description?: string | null
+          vin?: string | null
+          base_price?: number
+          has_duty?: boolean
+          duty_price?: number | null
+          quantity?: number
+          condition?: string | null
+          transmission?: string | null
+          cylinders?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          quote_id?: string
+          vehicle_id?: string | null
+          vehicle_description?: string | null
+          vin?: string | null
+          base_price?: number
+          has_duty?: boolean
+          duty_price?: number | null
+          quantity?: number
+          condition?: string | null
+          transmission?: string | null
+          cylinders?: string | null
+          created_at?: string
         }
         Relationships: []
       }
@@ -384,6 +600,126 @@ export type Database = {
         }
         Relationships: []
       }
+      property_intakes: {
+        Row: {
+          id: string
+          created_at: string
+          form_number: string | null
+          form_date: string | null
+          full_name: string
+          phone_number: string | null
+          residential_address: string | null
+          property_type: string | null
+          property_type_other: string | null
+          property_location: string | null
+          ownership_documents: string[] | null
+          ownership_document_other: string | null
+          property_specifications: string | null
+          property_size: string | null
+          plot_number: string | null
+          price: number | null
+          owner_relationship: string | null
+          owner_relationship_other: string | null
+          advert_placement: string[] | null
+          inspected: string | null
+          inspection_date: string | null
+          inspection_time: string | null
+          officer_assigned: string | null
+          payment_status: string | null
+          amount_paid: number | null
+          receipt_number: string | null
+          condition_remarks: string | null
+          decision: string | null
+          decline_reason: string | null
+          manager_comments: string | null
+          approved_by_name: string | null
+          approved_by_signature: string | null
+          approved_date: string | null
+          agreement: string | null
+          sign_one: string | null
+          sign_two: string | null
+          created_by: string | null
+        }
+        Insert: {
+          id?: string
+          created_at?: string
+          form_number?: string | null
+          form_date?: string | null
+          full_name: string
+          phone_number?: string | null
+          residential_address?: string | null
+          property_type?: string | null
+          property_type_other?: string | null
+          property_location?: string | null
+          ownership_documents?: string[] | null
+          ownership_document_other?: string | null
+          property_specifications?: string | null
+          property_size?: string | null
+          plot_number?: string | null
+          price?: number | null
+          owner_relationship?: string | null
+          owner_relationship_other?: string | null
+          advert_placement?: string[] | null
+          inspected?: string | null
+          inspection_date?: string | null
+          inspection_time?: string | null
+          officer_assigned?: string | null
+          payment_status?: string | null
+          amount_paid?: number | null
+          receipt_number?: string | null
+          condition_remarks?: string | null
+          decision?: string | null
+          decline_reason?: string | null
+          manager_comments?: string | null
+          approved_by_name?: string | null
+          approved_by_signature?: string | null
+          approved_date?: string | null
+          agreement?: string | null
+          sign_one?: string | null
+          sign_two?: string | null
+          created_by?: string | null
+        }
+        Update: {
+          id?: string
+          created_at?: string
+          form_number?: string | null
+          form_date?: string | null
+          full_name?: string
+          phone_number?: string | null
+          residential_address?: string | null
+          property_type?: string | null
+          property_type_other?: string | null
+          property_location?: string | null
+          ownership_documents?: string[] | null
+          ownership_document_other?: string | null
+          property_specifications?: string | null
+          property_size?: string | null
+          plot_number?: string | null
+          price?: number | null
+          owner_relationship?: string | null
+          owner_relationship_other?: string | null
+          advert_placement?: string[] | null
+          inspected?: string | null
+          inspection_date?: string | null
+          inspection_time?: string | null
+          officer_assigned?: string | null
+          payment_status?: string | null
+          amount_paid?: number | null
+          receipt_number?: string | null
+          condition_remarks?: string | null
+          decision?: string | null
+          decline_reason?: string | null
+          manager_comments?: string | null
+          approved_by_name?: string | null
+          approved_by_signature?: string | null
+          approved_date?: string | null
+          agreement?: string | null
+          sign_one?: string | null
+          sign_two?: string | null
+          created_by?: string | null
+        }
+        Relationships: []
+      }
       repairs: {
         Row: {
           brought_in_by: string | null
@@ -496,6 +832,10 @@ export type Database = {
           customer_id: string
           id: string
           notes: string | null
+          is_registered: boolean
+          sale_number: number | null
+          agreement_details: Json | null
+          receipt_url: string | null
           payment_status: string | null
           payment_type: string | null
           rep_name: string | null
@@ -514,6 +854,10 @@ export type Database = {
           customer_id: string
           id?: string
           notes?: string | null
+          is_registered?: boolean
+          sale_number?: number | null
+          agreement_details?: Json | null
+          receipt_url?: string | null
           payment_status?: string | null
           payment_type?: string | null
           rep_name?: string | null
@@ -532,6 +876,10 @@ export type Database = {
           customer_id?: string
           id?: string
           notes?: string | null
+          is_registered?: boolean
+          sale_number?: number | null
+          agreement_details?: Json | null
+          receipt_url?: string | null
           payment_status?: string | null
           payment_type?: string | null
           rep_name?: string | null
@@ -559,6 +907,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      sale_payments: {
+        Row: {
+          id: string
+          sale_id: string | null
+          amount: number
+          payment_date: string | null
+          payment_method: string | null
+          notes: string | null
+          created_at: string | null
+        }
+        Insert: {
+          id?: string
+          sale_id?: string | null
+          amount: number
+          payment_date?: string | null
+          payment_method?: string | null
+          notes?: string | null
+          created_at?: string | null
+        }
+        Update: {
+          id?: string
+          sale_id?: string | null
+          amount?: number
+          payment_date?: string | null
+          payment_method?: string | null
+          notes?: string | null
+          created_at?: string | null
+        }
+        Relationships: []
       }
       sale_vehicles: {
         Row: {
@@ -647,6 +1025,16 @@ export type Database = {
           num_keys: number
           price: number
           source_company: string | null
+          trim: string | null
+          inventory_type: string
+          source_company_phone: string | null
+          source_rep_name: string | null
+          source_rep_phone: string | null
+          source_rep_signature: string | null
+          accepted_by_name: string | null
+          accepted_by_phone: string | null
+          accepted_date: string | null
+          accepted_signature: string | null
           status: string
           transmission: string | null
           updated_at: string
@@ -671,6 +1059,16 @@ export type Database = {
           num_keys?: number
           price?: number
           source_company?: string | null
+          trim?: string | null
+          inventory_type?: string
+          source_company_phone?: string | null
+          source_rep_name?: string | null
+          source_rep_phone?: string | null
+          source_rep_signature?: string | null
+          accepted_by_name?: string | null
+          accepted_by_phone?: string | null
+          accepted_date?: string | null
+          accepted_signature?: string | null
           status?: string
           transmission?: string | null
           updated_at?: string
@@ -695,6 +1093,16 @@ export type Database = {
           num_keys?: number
           price?: number
           source_company?: string | null
+          trim?: string | null
+          inventory_type?: string
+          source_company_phone?: string | null
+          source_rep_name?: string | null
+          source_rep_phone?: string | null
+          source_rep_signature?: string | null
+          accepted_by_name?: string | null
+          accepted_by_phone?: string | null
+          accepted_date?: string | null
+          accepted_signature?: string | null
           status?: string
           transmission?: string | null
           updated_at?: string

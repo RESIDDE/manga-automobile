@@ -40,12 +40,15 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/hooks/useAuth";
-import { canEdit } from "@/lib/permissions";
+import { usePermissions } from "@/hooks/usePermissions";
+import { canDelete, canEdit } from "@/lib/permissions";
 import { Badge } from "@/components/ui/badge";
 
 export default function VehicleDetail() {
   const { role } = useAuth();
-  const hasEdit = canEdit(role, "vehicles");
+  const { permissions } = usePermissions();
+  const hasEdit = canEdit(role, "vehicles", permissions);
+  const hasDelete = canDelete(role, "vehicles", permissions);
   const { id } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();

@@ -1,6 +1,7 @@
-import { format, subMonths, isWithinInterval, startOfMonth, endOfMonth } from "date-fns";
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { format, subMonths, startOfMonth, endOfMonth, isWithinInterval } from "date-fns";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,138 +12,224 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import {
-  Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious,
-} from "@/components/ui/pagination";
-import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Link } from "react-router-dom";
-import { PlusCircle, Search, Eye, Pencil, Trash2, Download, FileText, Printer, Car, ListFilter, DollarSign, Wrench, BarChart3, PieChart as PieChartIcon, TrendingUp } from "lucide-react";
-import { toast } from "sonner";
-import { exportToCSV, exportToJSON, printTable, downloadTableAsPDF, triggerPrint } from "@/lib/exportHelpers";
-import { useAuth } from "@/hooks/useAuth";
-import { canEdit } from "@/lib/permissions";
-import { logAction } from "@/lib/logger";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
-  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, AreaChart, Area, CartesianGrid
+  BarChart3, Car, ChevronDown, Download, Eye, FileText, LayoutGrid, Pencil,
+  PlusCircle, Printer, Rows3, Search, Trash2,
+} from "lucide-react";
+import {
+  Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
-import { useMemo } from "react";
+import { toast } from "sonner";
+import { exportToCSV, exportToJSON, printTable, downloadTableAsPDF } from "@/lib/exportHelpers";
+import { CustomPagination } from "@/components/CustomPagination";
+import { useAuth } from "@/hooks/useAuth";
+import { usePermissions } from "@/hooks/usePermissions";
+import { canCreate, canDelete, canEdit, isUnrestricted } from "@/lib/permissions";
+import { logAction } from "@/lib/logger";
+import { buildSoldPriceMap, soldFigure, soldTotals } from "@/lib/soldPrice";
+import { firstWorkingSelect } from "@/lib/dbCompat";
+import { formatNaira } from "@/lib/numberToWords";
+import {
+  ALL_TIME, ALL_WEEKS, matchesPeriod, monthOptions, shortDate, WEEK_OPTIONS,
+} from "@/lib/historyFilters";
 
-const COLORS = ["hsl(var(--primary))", "hsl(199 89% 48%)", "hsl(142 76% 36%)", "hsl(38 92% 50%)", "hsl(262 83% 58%)", "hsl(0 84% 60%)"];
+const CHART_COLORS = [
+  "hsl(199 89% 48%)", "hsl(142 76% 36%)", "hsl(38 92% 50%)",
+  "hsl(262 83% 58%)", "hsl(0 84% 60%)", "hsl(220 9% 46%)",
+];
 
-const CustomTooltip = ({ active, payload, label }: any) => {
-  if (active && payload && payload.length) {
-    return (
-      <div className="glass-panel p-3 border border-white/20 shadow-2xl rounded-xl z-50">
-        <p className="font-semibold text-foreground mb-1">{label}</p>
-        {payload.map((entry: any, index: number) => (
-          <p key={index} className="text-sm font-medium flex justify-between gap-4" style={{ color: entry.color || entry.fill }}>
-            <span>{entry.name}:</span> 
-            <span>{entry.name.toLowerCase().includes('value') || entry.name.toLowerCase().includes('price') ? `₦${entry.value.toLocaleString()}` : entry.value}</span>
+const ChartTooltip = ({ active, payload, label }: any) => {
+  if (!active || !payload?.length) return null;
+  return (
+    <div className="glass-panel p-3 border border-white/20 shadow-2xl rounded-xl z-50">
+      {label && <p className="font-semibold text-foreground mb-1">{label}</p>}
+      {payload.map((entry: any, i: number) => {
+        const money = /value|price|revenue|cost|profit/i.test(String(entry.name));
+        return (
+          <p key={i} className="text-sm font-medium flex justify-between gap-4"
+             style={{ color: entry.color || entry.fill }}>
+            <span>{entry.name}:</span>
+            <span>{money ? formatNaira(entry.value) : entry.value}</span>
           </p>
-        ))}
-      </div>
-    );
-  }
-  return null;
+        );
+      })}
+    </div>
+  );
 };
 
-const PAGE_SIZE = 20;
+const StatTile = ({ label, value, tone = "text-foreground" }: {
+  label: string; value: string | number; tone?: string;
+}) => (
+  <div className="bento-card p-4">
+    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
+    <p className={`text-2xl font-bold mt-1 ${tone}`}>{value}</p>
+  </div>
+);
 
 export default function VehiclesList() {
   const { role } = useAuth();
-  const hasEdit = canEdit(role, "vehicles");
+  const { permissions } = usePermissions();
+  const hasCreate = canCreate(role, "vehicles", permissions);
+  const hasEdit = canEdit(role, "vehicles", permissions);
+  const hasDelete = canDelete(role, "vehicles", permissions);
+
+  // The tab lives in the URL, so it survives a refresh and can be linked
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab = searchParams.get("tab") === "sold" ? "sold" : "active";
+  const setTab = (next: "active" | "sold") => {
+    const params = new URLSearchParams(searchParams);
+    params.set("tab", next);
+    setSearchParams(params, { replace: true });
+    setPage(0);
+  };
 
   const [search, setSearch] = useState("");
   const [conditionFilter, setConditionFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [sourceFilter, setSourceFilter] = useState("all");
+  const [month, setMonth] = useState(ALL_TIME);
+  const [week, setWeek] = useState(ALL_WEEKS);
+  const [view, setView] = useState<"cards" | "table">("cards");
+  const [showAnalytics, setShowAnalytics] = useState(false);
   const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState(20);
   const [deleteId, setDeleteId] = useState<string | null>(null);
-  const queryClient = useQueryClient();
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
 
-  const { data: vehicles = [] as any[], isLoading } = useQuery({
+  const queryClient = useQueryClient();
+  const months = useMemo(() => monthOptions(), []);
+
+  // Stock only: 'service' rows are workshop-only cars, never part of inventory
+  const { data: vehicles = [], isLoading } = useQuery({
     queryKey: ["vehicles"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("vehicles").select("*").order("created_at", { ascending: false });
+      // Only the columns the list, the tiles and the exports use: the signature
+      // and description columns are large text and belong to the detail page.
+      // Some of these arrive with migrations, so the read steps down and ends on
+      // select("*"), which always works — a heavier page beats an empty one.
+      const BASE_COLUMNS =
+        "id, make, model, year, trim, color, vin, price, cost_price, status, condition, " +
+        "num_keys, source_company, date_arrived, date_stored, created_at";
+      const ADDED_COLUMNS = "inventory_type, source_company_phone";
+
+      const data = await firstWorkingSelect<any[]>(
+        [
+          () => supabase
+            .from("vehicles")
+            .select(`${BASE_COLUMNS}, ${ADDED_COLUMNS}`)
+            .order("created_at", { ascending: false }) as any,
+          () => supabase
+            .from("vehicles")
+            .select(BASE_COLUMNS)
+            .order("created_at", { ascending: false }) as any,
+          () => supabase
+            .from("vehicles")
+            .select("*")
+            .order("created_at", { ascending: false }) as any,
+        ]
+      );
+      return (data as any[]).filter(
+        (v) => (v.inventory_type ?? "main") === "main" && v.status !== "Customer Car"
+      );
+    },
+  });
+
+  // Sales supply the sold figures; a vehicle's own price is only its asking price
+  const { data: sales = [] } = useQuery({
+    queryKey: ["sales", "for-vehicles"],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from("sales")
+        .select("id, vehicle_id, sale_price, sale_date, created_at, sale_vehicles(vehicle_id, price)")
+        .order("sale_date", { ascending: false });
       if (error) throw error;
       return data as any[];
     },
   });
 
-  const stats = useMemo((): any => {
-    const fleet = vehicles.filter(v => v.status !== "Customer Car");
-    const totalCount = fleet.length;
-    const availableCount = fleet.filter(v => v.status?.toLowerCase() === "available").length;
-    const repairCount = fleet.filter(v => v.status?.toLowerCase() === "under repair").length;
-    const totalInventoryValue = fleet.filter(v => v.status?.toLowerCase() === "available").reduce((sum, v) => sum + Number(v.price || 0), 0);
-    
-    // Average price
-    const avgPrice = availableCount > 0 ? totalInventoryValue / availableCount : 0;
+  const soldMap = useMemo(() => buildSoldPriceMap(sales), [sales]);
 
-    // Recent Additions (last 30 days)
-    const thirtyDaysAgo = new Date();
-    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
-    const recentAdditions = fleet.filter(v => new Date(v.created_at) >= thirtyDaysAgo).length;
+  const sources = useMemo(() => {
+    const set = new Set<string>();
+    vehicles.forEach((v) => v.source_company && set.add(v.source_company));
+    return [...set].sort();
+  }, [vehicles]);
 
-    // Make Distribution
-    const makesMap = fleet.reduce((acc: Record<string, number>, v) => {
-      acc[v.make] = (acc[v.make] || 0) + 1;
-      return acc;
-    }, {});
-    const makeData = Object.entries(makesMap)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a: any, b: any) => (b.value as number) - (a.value as number))
-      .slice(0, 5);
+  const inTab = useMemo(
+    () => vehicles.filter((v) =>
+      tab === "sold" ? v.status === "Sold" : v.status !== "Sold"
+    ),
+    [vehicles, tab]
+  );
 
-    // Condition Distribution
-    const conditionMap = fleet.reduce((acc: Record<string, number>, v) => {
-      const cond = (v as any).condition || "Unknown";
-      acc[cond] = (acc[cond] || 0) + 1;
-      return acc;
-    }, {});
-    const conditionData = Object.entries(conditionMap).map(([name, value]) => ({ name, value }));
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase();
+    return inTab.filter((v) => {
+      const matchesSearch = !q
+        || (v.make || "").toLowerCase().includes(q)
+        || (v.model || "").toLowerCase().includes(q)
+        || (v.trim || "").toLowerCase().includes(q)
+        || (v.vin || "").toLowerCase().includes(q);
+      const matchesCondition = conditionFilter === "all" || v.condition === conditionFilter;
+      const matchesStatus = tab === "sold" || statusFilter === "all" || v.status === statusFilter;
+      const matchesSource = sourceFilter === "all" || v.source_company === sourceFilter;
+      // On the Sold tab the period applies to the sale date, otherwise to arrival
+      const periodDate = tab === "sold"
+        ? (soldMap.get(v.id)?.date ?? v.date_arrived ?? v.created_at)
+        : (v.date_arrived ?? v.created_at);
+      return matchesSearch && matchesCondition && matchesStatus && matchesSource
+        && matchesPeriod(periodDate, month, week);
+    });
+  }, [inTab, search, conditionFilter, statusFilter, sourceFilter, month, week, tab, soldMap]);
 
-    // Status Distribution
-    const statusMap = fleet.reduce((acc: Record<string, number>, v) => {
-      const s = v.status || "Unknown";
-      acc[s] = (acc[s] || 0) + 1;
-      return acc;
-    }, {});
-    const statusData = Object.entries(statusMap).map(([name, value]) => ({ name, value }));
+  const stats = useMemo(() => {
+    if (tab === "sold") {
+      const t = soldTotals(filtered, soldMap);
+      return { kind: "sold" as const, ...t };
+    }
+    const cost = filtered.reduce((sum, v) => sum + Number(v.cost_price || 0), 0);
+    const asking = filtered.reduce((sum, v) => sum + Number(v.price || 0), 0);
+    return { kind: "active" as const, units: filtered.length, cost, asking };
+  }, [filtered, soldMap, tab]);
 
-    // Monthly arrivals
-    const monthlyTrend: { name: string; Arrivals: number }[] = [];
-    for (let i = 5; i >= 0; i--) {
-      const d = subMonths(new Date(), i);
+  const charts = useMemo(() => {
+    const monthly = Array.from({ length: 6 }, (_, i) => {
+      const d = subMonths(new Date(), 5 - i);
       const start = startOfMonth(d);
       const end = endOfMonth(d);
-      const count = fleet.filter(v => {
-        const arrivalDate = new Date((v as any).date_arrived || v.created_at);
-        return isWithinInterval(arrivalDate, { start, end });
+      const count = filtered.filter((v) => {
+        const raw = tab === "sold"
+          ? (soldMap.get(v.id)?.date ?? v.created_at)
+          : (v.date_arrived ?? v.created_at);
+        const when = raw ? new Date(raw) : null;
+        return when && !Number.isNaN(when.getTime()) && isWithinInterval(when, { start, end });
       }).length;
-      monthlyTrend.push({ 
-        name: format(d, "MMM"), 
-        Arrivals: count 
-      });
-    }
+      return { name: format(d, "MMM"), [tab === "sold" ? "Sales" : "Arrivals"]: count };
+    });
 
-    return {
-      totalCount,
-      availableCount,
-      repairCount,
-      totalInventoryValue,
-      avgPrice,
-      recentAdditions,
-      makeData,
-      conditionData,
-      statusData,
-      monthlyTrend
-    };
-  }, [vehicles]);
+    const makeCounts = filtered.reduce<Record<string, number>>((acc, v) => {
+      const key = v.make || "Unknown";
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    const makes = Object.entries(makeCounts)
+      .map(([name, value]) => ({ name, value: Number(value) }))
+      .sort((a, b) => b.value - a.value)
+      .slice(0, 5);
+
+    return { monthly, makes };
+  }, [filtered, soldMap, tab]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const safePage = Math.min(page, pageCount - 1);
+  const paged = filtered.slice(safePage * pageSize, (safePage + 1) * pageSize);
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -152,414 +239,585 @@ export default function VehiclesList() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["vehicles"] });
-      toast.success("Vehicle deleted successfully");
+      toast.success("Vehicle deleted");
+      setDeleteId(null);
     },
-    onError: () => toast.error("Failed to delete vehicle"),
+    onError: () => toast.error("Failed to delete the vehicle"),
   });
 
-  const filtered = vehicles.filter((v) => {
-    // Hide customer cars from the main sales fleet view
-    if (v.status === "Customer Car") return false;
+  const soldIds = useMemo(
+    () => vehicles.filter((v) => v.status === "Sold").map((v) => v.id),
+    [vehicles]
+  );
 
-    const q = search.toLowerCase();
-    const matchesSearch = !q || v.make.toLowerCase().includes(q) || v.model.toLowerCase().includes(q) || (v.trim && v.trim.toLowerCase().includes(q)) || (v.vin && v.vin.toLowerCase().includes(q)) || ((v as any).source_company && (v as any).source_company.toLowerCase().includes(q));
-    const matchesCondition = conditionFilter === "all" || (v as any).condition === conditionFilter;
-    return matchesSearch && matchesCondition;
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async () => {
+      if (soldIds.length === 0) throw new Error("There are no sold vehicles to delete");
+      const { error } = await supabase.from("vehicles").delete().in("id", soldIds);
+      if (error) throw error;
+      await logAction("DELETE", "Vehicle", null, { bulk: "sold", count: soldIds.length });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["vehicles"] });
+      toast.success(`Deleted ${soldIds.length} sold vehicle${soldIds.length === 1 ? "" : "s"}`);
+      setBulkDeleteOpen(false);
+    },
+    onError: (e: any) => toast.error(e?.message || "Bulk delete failed"),
   });
 
-  const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
-  const paged = filtered.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+  // ── Exports: every one carries the derived sold figure ─────────────────────
+  const exportRows = () =>
+    filtered.map((v) => {
+      const f = soldFigure(v, soldMap);
+      return {
+        Make: v.make, Model: v.model, Trim: v.trim || "", Year: v.year,
+        VIN: v.vin || "", Colour: v.color || "",
+        "Asking Price": Number(v.price || 0),
+        "Cost Price": Number(v.cost_price || 0),
+        "Sold Price": v.status === "Sold" ? f.amount : "",
+        "Sold Date": v.status === "Sold" && f.date ? shortDate(f.date) : "",
+        Status: v.status, Condition: v.condition || "",
+        "Source Company": v.source_company || "",
+        "Date Arrived": v.date_arrived || "",
+      };
+    });
+
+  const priceColumnLabel = tab === "sold" ? "Sold Price" : "Price";
+
+  const tableRows = () =>
+    filtered.map((v) => {
+      const f = soldFigure(v, soldMap);
+      return {
+        vehicle: `${v.year} ${v.make} ${v.model}`.trim(),
+        vin: v.vin || "—",
+        price: formatNaira(tab === "sold" ? f.amount : v.price),
+        date: tab === "sold" ? shortDate(f.date) : shortDate(v.date_arrived),
+        status: v.status,
+        condition: v.condition || "—",
+      };
+    });
+
+  const tableColumns = [
+    { key: "vehicle", label: "Vehicle" },
+    { key: "vin", label: "VIN" },
+    { key: "price", label: priceColumnLabel },
+    { key: "date", label: tab === "sold" ? "Sold Date" : "Arrived" },
+    { key: "status", label: "Status" },
+    { key: "condition", label: "Condition" },
+  ];
 
   const handleExportCSV = () => {
-    const rows = filtered.map((v) => ({
-      Make: v.make, Model: v.model, Year: v.year, VIN: v.vin || "", Color: (v as any).color || "",
-      Price: v.price, "Cost Price": (v as any).cost_price || "", Status: v.status, Condition: (v as any).condition || "",
-      "Source Company": (v as any).source_company || "", "Date Arrived": (v as any).date_arrived || "",
-    }));
-    exportToCSV(rows, "vehicles_export");
+    exportToCSV(exportRows(), `vehicles_${tab}`);
+    logAction("EXPORT", "Vehicle", null, { format: "csv", tab, rows: filtered.length });
   };
-
-  const handleExportJSON = () => exportToJSON(filtered, "vehicles_export");
-
+  const handleExportJSON = () => {
+    exportToJSON(exportRows(), `vehicles_${tab}`);
+    logAction("EXPORT", "Vehicle", null, { format: "json", tab, rows: filtered.length });
+  };
   const handlePrint = () => {
-    const rows = filtered.map((v) => ({
-      vehicle: `${v.year} ${v.make} ${v.model}`, vin: v.vin || "—", price: `₦${Number(v.price).toLocaleString()}`,
-      status: v.status, condition: (v as any).condition || "—",
-    }));
-    printTable("Vehicles Inventory — AMU Global Motors", rows, [
-      { key: "vehicle", label: "Vehicle" }, { key: "vin", label: "VIN" },
-      { key: "price", label: "Price" }, { key: "status", label: "Status" }, { key: "condition", label: "Condition" },
-    ]);
+    printTable(
+      `Vehicles — ${tab === "sold" ? "Sold" : "Active"} — Manga Automobiles`,
+      tableRows(), tableColumns
+    );
+    logAction("PRINT", "Vehicle", null, { tab, rows: filtered.length });
+  };
+  const handlePDF = async () => {
+    await downloadTableAsPDF(
+      `Vehicles — ${tab === "sold" ? "Sold" : "Active"}`, tableRows(), tableColumns
+    );
+    logAction("EXPORT", "Vehicle", null, { format: "pdf", tab, rows: filtered.length });
   };
 
-  const handleDownloadSummaryPDF = async () => {
-    const rows = filtered.map((v) => ({
-      vehicle: `${v.year} ${v.make} ${v.model}`, vin: v.vin || "—", price: `₦${Number(v.price).toLocaleString()}`,
-      status: v.status, condition: (v as any).condition || "—",
-    }));
-    await downloadTableAsPDF("Vehicles Inventory Summary", rows, [
-      { key: "vehicle", label: "Vehicle" }, { key: "vin", label: "VIN" },
-      { key: "price", label: "Price" }, { key: "status", label: "Status" }, { key: "condition", label: "Condition" },
-    ]);
+  const resetFilters = () => {
+    setSearch(""); setConditionFilter("all"); setStatusFilter("all");
+    setSourceFilter("all"); setMonth(ALL_TIME); setWeek(ALL_WEEKS); setPage(0);
   };
 
   return (
-    <div className="space-y-8 animate-fade-up pb-10 max-w-6xl mx-auto">
-      {/* Header Section */}
-      {/* Dashboard Section */}
-      <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-12 gap-4 md:gap-6 items-stretch">
-        {/* KPI Cards */}
-        <div className="lg:col-span-8 grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bento-card p-5 relative overflow-hidden group">
-            <div className="absolute -right-4 -top-4 w-16 h-16 bg-sky-500/10 rounded-full blur-2xl group-hover:bg-sky-500/20 transition-all" />
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 bg-sky-500/10 rounded-xl"><Car className="h-4 w-4 text-sky-500" /></div>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Total Fleet</span>
-            </div>
-            <h3 className="text-3xl font-bold">{stats.totalCount}</h3>
-            <p className="text-xs text-muted-foreground mt-1 font-medium">{stats.availableCount} Available</p>
+    <div className="p-4 md:p-8 space-y-6 animate-fade-in">
+      {/* Header */}
+      <div className="flex flex-wrap items-start justify-between gap-4">
+        <div className="flex items-start gap-4">
+          <div className="p-3 rounded-2xl bg-sky-500/10 shrink-0">
+            <Car className="h-6 w-6 text-sky-500" />
           </div>
-
-          <div className="bento-card p-5 relative overflow-hidden group">
-            <div className="absolute -right-4 -top-4 w-16 h-16 bg-emerald-500/10 rounded-full blur-2xl group-hover:bg-emerald-500/20 transition-all" />
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 bg-emerald-500/10 rounded-xl"><DollarSign className="h-4 w-4 text-emerald-500" /></div>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Value</span>
-            </div>
-            <h3 className="text-xl sm:text-2xl font-bold truncate">₦{stats.totalInventoryValue >= 1000000 ? (stats.totalInventoryValue / 1000000).toFixed(1) + 'M' : stats.totalInventoryValue.toLocaleString()}</h3>
-            <p className="text-xs text-muted-foreground mt-1 font-medium">Market Value</p>
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold tracking-tight">Vehicles</h1>
+            <p className="text-sm text-muted-foreground mt-1">
+              Stock on the lot, and everything that has been sold.
+            </p>
           </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" onClick={() => setShowAnalytics((s) => !s)}
+            className="rounded-xl border-white/10 hover:bg-white/5">
+            <BarChart3 className="h-4 w-4 mr-2" /> Analytics
+            <ChevronDown className={`h-4 w-4 ml-1 transition-transform ${showAnalytics ? "rotate-180" : ""}`} />
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="rounded-xl border-white/10 hover:bg-white/5">
+                <Download className="h-4 w-4 mr-2" /> Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="glass-panel border-white/10 rounded-xl">
+              <DropdownMenuItem onClick={handleExportCSV} className="rounded-lg cursor-pointer">
+                <FileText className="h-4 w-4 mr-2" /> Excel / CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportJSON} className="rounded-lg cursor-pointer">
+                <FileText className="h-4 w-4 mr-2" /> JSON
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handlePDF} className="rounded-lg cursor-pointer">
+                <Download className="h-4 w-4 mr-2" /> PDF
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handlePrint} className="rounded-lg cursor-pointer">
+                <Printer className="h-4 w-4 mr-2" /> Print
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          {tab === "sold" && isUnrestricted(role) && soldIds.length > 0 && (
+            <Button variant="outline" onClick={() => setBulkDeleteOpen(true)}
+              className="rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10">
+              <Trash2 className="h-4 w-4 mr-2" /> Delete All Sold
+            </Button>
+          )}
+          {hasCreate && (
+            <Button asChild
+              className="rounded-xl bg-sky-500 hover:bg-sky-600 text-white border-0 shadow-lg shadow-sky-500/20">
+              <Link to="/vehicles/new"><PlusCircle className="h-4 w-4 mr-2" /> Add Vehicle</Link>
+            </Button>
+          )}
+        </div>
+      </div>
 
-          <div className="bento-card p-5 relative overflow-hidden group">
-            <div className="absolute -right-4 -top-4 w-16 h-16 bg-amber-500/10 rounded-full blur-2xl group-hover:bg-amber-500/20 transition-all" />
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 bg-amber-500/10 rounded-xl"><Wrench className="h-4 w-4 text-amber-500" /></div>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Repairs</span>
-            </div>
-            <h3 className="text-3xl font-bold">{stats.repairCount}</h3>
-            <p className="text-xs text-muted-foreground mt-1 font-medium">Under Maintenance</p>
-          </div>
+      {/* Tabs */}
+      <div className="flex p-1.5 bg-foreground/5 rounded-2xl gap-1 w-fit">
+        {([["active", "Active"], ["sold", "Sold"]] as const).map(([key, label]) => (
+          <button
+            key={key}
+            onClick={() => setTab(key)}
+            aria-current={tab === key ? "page" : undefined}
+            className={`px-5 h-9 rounded-xl text-sm font-semibold transition-colors ${
+              tab === key ? "bg-background text-foreground shadow" : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {label}
+            <span className="ml-2 text-[11px] opacity-60">
+              {vehicles.filter((v) => (key === "sold" ? v.status === "Sold" : v.status !== "Sold")).length}
+            </span>
+          </button>
+        ))}
+      </div>
 
-          <div className="bento-card p-5 relative overflow-hidden group">
-            <div className="absolute -right-4 -top-4 w-16 h-16 bg-violet-500/10 rounded-full blur-2xl group-hover:bg-violet-500/20 transition-all" />
-            <div className="flex items-center gap-3 mb-3">
-              <div className="p-2 bg-violet-500/10 rounded-xl"><TrendingUp className="h-4 w-4 text-violet-500" /></div>
-              <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Active</span>
-            </div>
-            <h3 className="text-3xl font-bold">{stats.recentAdditions}</h3>
-            <p className="text-xs text-muted-foreground mt-1 font-medium">New Arrivals (30d)</p>
-          </div>
+      {/* Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {stats.kind === "active" ? (
+          <>
+            <StatTile label="Units in stock" value={stats.units} />
+            <StatTile label="Total cost value" value={formatNaira(stats.cost)} />
+            <StatTile label="Total asking value" value={formatNaira(stats.asking)} tone="text-sky-500" />
+            <StatTile
+              label="Average asking"
+              value={formatNaira(stats.units ? stats.asking / stats.units : 0)}
+            />
+          </>
+        ) : (
+          <>
+            <StatTile label="Units sold" value={stats.units} />
+            <StatTile label="Revenue" value={formatNaira(stats.revenue)} tone="text-blue-500" />
+            <StatTile label="Cost" value={formatNaira(stats.cost)} />
+            <StatTile
+              label="Profit"
+              value={formatNaira(stats.profit)}
+              tone={stats.profit >= 0 ? "text-emerald-500" : "text-rose-500"}
+            />
+          </>
+        )}
+      </div>
 
-          {/* Monthly Trend Area Chart - 8 Cols within this section */}
-          <div className="col-span-2 md:col-span-4 bento-card p-6 h-[220px]">
-            <div className="flex items-center justify-between mb-4">
-              <h4 className="text-sm font-semibold flex items-center gap-2">
-                <BarChart3 className="w-3.5 h-3.5 text-sky-500" /> Inventory Growth
-              </h4>
-              <span className="text-[10px] bg-sky-500/10 text-sky-500 px-2 py-0.5 rounded-full font-bold">LAST 6 MONTHS</span>
-            </div>
-            <div className="h-[120px] w-full">
+      {/* Analytics */}
+      {showAnalytics && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 animate-fade-in">
+          <div className="bento-card p-5">
+            <p className="text-sm font-bold mb-3">
+              {tab === "sold" ? "Sales per month" : "Arrivals per month"}
+            </p>
+            <div className="h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
-                <AreaChart data={stats.monthlyTrend}>
-                  <defs>
-                    <linearGradient id="colorArrivals" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                      <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <Tooltip content={<CustomTooltip />} />
-                  <Area type="monotone" dataKey="Arrivals" stroke="hsl(var(--primary))" fillOpacity={1} fill="url(#colorArrivals)" strokeWidth={2} />
+                <AreaChart data={charts.monthly}>
+                  <XAxis dataKey="name" stroke="hsl(var(--muted-foreground))" fontSize={11} />
+                  <YAxis stroke="hsl(var(--muted-foreground))" fontSize={11} allowDecimals={false} />
+                  <Tooltip content={<ChartTooltip />} />
+                  <Area
+                    type="monotone"
+                    dataKey={tab === "sold" ? "Sales" : "Arrivals"}
+                    stroke={CHART_COLORS[0]}
+                    fill={CHART_COLORS[0]}
+                    fillOpacity={0.2}
+                  />
                 </AreaChart>
               </ResponsiveContainer>
             </div>
           </div>
-        </div>
-
-        {/* Distribution Charts */}
-        <div className="lg:col-span-4 grid grid-cols-1 gap-4">
-          <div className="bento-card p-5 flex flex-col">
-            <h4 className="text-sm font-semibold mb-4 flex items-center gap-2"><PieChartIcon className="w-3.5 h-3.5 text-violet-500" /> Top Brands</h4>
-            <div className="flex-1 h-[140px]">
+          <div className="bento-card p-5">
+            <p className="text-sm font-bold mb-3">Top makes</p>
+            <div className="h-[200px]">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
-                  <Pie data={stats.makeData} dataKey="value" nameKey="name" cx="50%" cy="50%" innerRadius={40} outerRadius={60} paddingAngle={4}>
-                    {stats.makeData.map((_, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} stroke="none" />
+                  <Pie data={charts.makes} dataKey="value" nameKey="name" innerRadius={45} outerRadius={75}>
+                    {charts.makes.map((_, i) => (
+                      <Cell key={i} fill={CHART_COLORS[i % CHART_COLORS.length]} />
                     ))}
                   </Pie>
-                  <Tooltip content={<CustomTooltip />} />
+                  <Tooltip content={<ChartTooltip />} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              {stats.makeData.slice(0, 4).map((m, i) => (
-                <div key={m.name} className="flex items-center gap-1.5">
-                  <div className="w-2 h-2 rounded-full" style={{ backgroundColor: COLORS[i] }} />
-                  <span className="text-[10px] font-medium truncate">{m.name} ({m.value})</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="bento-card p-5 flex flex-col">
-            <h4 className="text-sm font-semibold mb-4 flex items-center gap-2"><ListFilter className="w-3.5 h-3.5 text-emerald-500" /> Fleet Condition</h4>
-            <div className="space-y-3">
-              {stats.conditionData.map((c, i) => (
-                <div key={c.name} className="space-y-1">
-                  <div className="flex justify-between text-[10px] font-bold uppercase tracking-wider">
-                    <span>{c.name}</span>
-                    <span className="text-muted-foreground">{c.value} Vehicles</span>
-                  </div>
-                  <div className="h-1.5 w-full bg-foreground/5 rounded-full overflow-hidden">
-                    <div 
-                      className="h-full bg-emerald-500 rounded-full transition-all duration-1000" 
-                      style={{ width: `${((c.value as number) / stats.totalCount) * 100}%` }} 
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
-      </div>
+      )}
 
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mt-8">
-        <div>
-          <div className="flex items-center gap-2 mb-1 opacity-80">
-            <Car className="w-4 h-4 text-sky-500" />
-            <span className="text-sm font-medium uppercase tracking-wider text-sky-500">Fleet Management</span>
-          </div>
-          <h1 className="text-3xl md:text-4xl font-heading font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-foreground via-foreground to-foreground/70 tracking-tight">
-            Inventory List
-          </h1>
-        </div>
-        <div className="flex gap-2 shrink-0">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="lg" className="rounded-2xl glass-panel border-white/10 hover:bg-white/5 transition-all">
-                <Download className="mr-2 h-4 w-4" /> Export
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent className="rounded-xl glass-panel p-2 shadow-2xl border-white/10" align="end">
-              <DropdownMenuItem onClick={handleExportCSV} className="rounded-lg cursor-pointer">
-                <FileText className="mr-2 h-4 w-4 text-muted-foreground" /> Export to CSV
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportJSON} className="rounded-lg cursor-pointer">
-                <FileText className="mr-2 h-4 w-4 text-muted-foreground" /> Export to JSON
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleDownloadSummaryPDF} className="rounded-lg cursor-pointer text-sky-500 font-bold">
-                <FileText className="mr-2 h-4 w-4" /> Download PDF Inventory (Direct)
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handlePrint} className="rounded-lg cursor-pointer text-muted-foreground mt-1 py-1 border-t border-white/5">
-                <Printer className="mr-2 h-4 w-4" /> Print / Save PDF (Dialog)
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <Button asChild size="lg" className="rounded-2xl shadow-lg shadow-sky-500/25 hover:shadow-sky-500/40 transition-all bg-sky-500 hover:bg-sky-600">
-            <Link to="/vehicles/new">
-              <PlusCircle className="mr-2 h-5 w-5" /> Add Vehicle
-            </Link>
-          </Button>
-        </div>
-      </div>
-
-      {/* Filters Control Bar */}
-      <div className="glass-panel p-4 rounded-3xl flex flex-col sm:flex-row gap-4 items-center relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-r from-sky-500/5 to-transparent pointer-events-none" />
-        <div className="relative w-full sm:w-80 group z-10">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground group-focus-within:text-sky-500 transition-colors" />
-          <Input 
-            placeholder="Search by name, model, VIN..." 
-            value={search} 
-            onChange={(e) => { setSearch(e.target.value); setPage(0); }} 
-            className="pl-10 h-10 rounded-xl bg-background/50 border-white/10 focus-visible:ring-sky-500/50 transition-all font-medium text-sm w-full"
+      {/* Filters */}
+      <div className="glass-panel rounded-2xl border border-white/5 p-4 flex flex-col xl:flex-row gap-3 xl:items-center">
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search make, model or VIN..."
+            value={search}
+            onChange={(e) => { setSearch(e.target.value); setPage(0); }}
+            className="h-10 pl-9 rounded-xl bg-background/50 border-white/10"
           />
         </div>
-        <div className="relative z-10 w-full sm:w-auto flex items-center gap-2">
-          <ListFilter className="h-4 w-4 text-muted-foreground hidden sm:block" />
+        <div className="flex flex-wrap gap-2">
           <Select value={conditionFilter} onValueChange={(v) => { setConditionFilter(v); setPage(0); }}>
-            <SelectTrigger className="w-full sm:w-[180px] h-10 rounded-xl bg-background/50 border-white/10">
+            <SelectTrigger className="h-10 w-[130px] rounded-xl bg-background/50 border-white/10 text-sm">
               <SelectValue placeholder="Condition" />
             </SelectTrigger>
-            <SelectContent className="glass-panel rounded-xl">
-              <SelectItem value="all">All Conditions</SelectItem>
-              <SelectItem value="New">New</SelectItem>
-              <SelectItem value="Used">Used</SelectItem>
-              <SelectItem value="Damaged">Damaged</SelectItem>
+            <SelectContent className="glass-panel border-white/10 rounded-xl">
+              <SelectItem value="all" className="text-sm">All conditions</SelectItem>
+              {["New", "Used", "Damaged"].map((c) => (
+                <SelectItem key={c} value={c} className="text-sm">{c}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
-        </div>
-        <div className="sm:ml-auto z-10">
-           <span className="text-sm font-medium text-muted-foreground bg-background/50 px-3 py-1.5 rounded-lg border border-white/5">
-             {filtered.length} Results
-           </span>
+
+          {tab === "active" && (
+            <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(0); }}>
+              <SelectTrigger className="h-10 w-[130px] rounded-xl bg-background/50 border-white/10 text-sm">
+                <SelectValue placeholder="Status" />
+              </SelectTrigger>
+              <SelectContent className="glass-panel border-white/10 rounded-xl">
+                <SelectItem value="all" className="text-sm">All statuses</SelectItem>
+                {["Available", "Reserved", "Under Repair"].map((s) => (
+                  <SelectItem key={s} value={s} className="text-sm">{s}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          )}
+
+          <Select value={sourceFilter} onValueChange={(v) => { setSourceFilter(v); setPage(0); }}>
+            <SelectTrigger className="h-10 w-[150px] rounded-xl bg-background/50 border-white/10 text-sm">
+              <SelectValue placeholder="Source" />
+            </SelectTrigger>
+            <SelectContent className="glass-panel border-white/10 rounded-xl max-h-[260px]">
+              <SelectItem value="all" className="text-sm">All sources</SelectItem>
+              {sources.map((srcName) => (
+                <SelectItem key={srcName} value={srcName} className="text-sm">{srcName}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={month} onValueChange={(v) => { setMonth(v); setPage(0); }}>
+            <SelectTrigger className="h-10 w-[140px] rounded-xl bg-background/50 border-white/10 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="glass-panel border-white/10 rounded-xl">
+              {months.map((m) => (
+                <SelectItem key={m.value} value={m.value} className="text-sm">{m.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={week} onValueChange={(v) => { setWeek(v); setPage(0); }}>
+            <SelectTrigger className="h-10 w-[120px] rounded-xl bg-background/50 border-white/10 text-sm">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent className="glass-panel border-white/10 rounded-xl">
+              {WEEK_OPTIONS.map((w) => (
+                <SelectItem key={w.value} value={w.value} className="text-sm">{w.label}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <div className="flex rounded-xl border border-white/10 bg-background/50 p-1">
+            <Button variant="ghost" size="icon" aria-label="Cards view" onClick={() => setView("cards")}
+              className={`h-8 w-8 rounded-lg ${view === "cards" ? "bg-sky-500/15 text-sky-500" : ""}`}>
+              <LayoutGrid className="h-4 w-4" />
+            </Button>
+            <Button variant="ghost" size="icon" aria-label="Table view" onClick={() => setView("table")}
+              className={`h-8 w-8 rounded-lg ${view === "table" ? "bg-sky-500/15 text-sky-500" : ""}`}>
+              <Rows3 className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
-      {/* Main Content Area */}
+      {/* List */}
       {isLoading ? (
-        <div className="space-y-4">
-          {[1,2,3,4,5].map(i => <div key={i} className="h-16 w-full rounded-2xl bg-card/40 animate-pulse" />)}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {[0, 1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-44 w-full rounded-2xl" />)}
         </div>
-      ) : paged.length === 0 ? (
-        <div className="bento-card p-12 flex flex-col items-center justify-center text-center">
+      ) : filtered.length === 0 ? (
+        <div className="bento-card p-12 flex flex-col items-center text-center">
           <div className="bg-sky-500/10 p-5 rounded-full mb-4">
-            <Car className="h-10 w-10 text-sky-500" />
+            <Car className="h-9 w-9 text-sky-500" />
           </div>
-          <h2 className="text-xl font-bold mb-2">No vehicles found.</h2>
-          <p className="text-muted-foreground max-w-sm mb-6">We couldn't find any vehicles matching your current search criteria.</p>
-          <Button variant="outline" onClick={() => {setSearch(''); setConditionFilter('all')}} className="rounded-xl">Clear Filters</Button>
+          <h2 className="text-lg font-bold mb-1">No vehicles found</h2>
+          <p className="text-sm text-muted-foreground max-w-sm mb-5">
+            Nothing matches the current filters on the {tab === "sold" ? "Sold" : "Active"} tab.
+          </p>
+          <Button variant="outline" onClick={resetFilters} className="rounded-xl border-white/10">
+            Clear filters
+          </Button>
         </div>
-      ) : (
-        <div className="bento-card overflow-hidden">
-          {/* Desktop Table View */}
-          <div className="hidden md:block overflow-x-auto w-full">
-            <Table className="w-full">
-              <TableHeader className="bg-foreground/5 pointer-events-none">
-                <TableRow className="border-border/50 hover:bg-transparent">
-                  <TableHead className="font-semibold px-6 py-4">Vehicle</TableHead>
-                  <TableHead className="font-semibold">Year</TableHead>
-                  <TableHead className="font-semibold">Chassis (VIN)</TableHead>
-                  <TableHead className="font-semibold">Condition</TableHead>
-                  <TableHead className="font-semibold">Source</TableHead>
-                  <TableHead className="font-semibold">Date</TableHead>
-                  <TableHead className="font-semibold">Status</TableHead>
-                  <TableHead className="text-right font-semibold px-6">Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {paged.map((v) => (
-                  <TableRow key={v.id} className="border-border/10 hover:bg-white/5 transition-colors group">
-                    <TableCell className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                         <div className="p-2 rounded-lg bg-foreground/5 group-hover:bg-sky-500/10 transition-colors">
-                           <Car className="h-4 w-4 text-sky-500" />
-                         </div>
-                         <span className="font-semibold text-sm transition-colors group-hover:text-primary">{v.make} {v.model} {v.trim && <span className="opacity-70 font-normal ml-1">{v.trim}</span>}</span>
-                      </div>
-                    </TableCell>
-                    <TableCell className="text-sm font-medium">{v.year}</TableCell>
-                    <TableCell>
-                      {v.vin ? <span className="font-mono text-xs bg-foreground/5 px-2 py-1 rounded-md">{v.vin}</span> : <span className="opacity-50">—</span>}
-                    </TableCell>
-                    <TableCell>{(v as any).condition || "—"}</TableCell>
-                    <TableCell className="max-w-[120px] truncate" title={(v as any).source_company}>{(v as any).source_company || "—"}</TableCell>
-                    <TableCell className="text-xs text-muted-foreground">{(v as any).date_arrived ? new Date((v as any).date_arrived).toLocaleDateString() : "—"}</TableCell>
-                    <TableCell>
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
-                        v.status?.toLowerCase() === 'available' ? 'bg-emerald-500/10 text-emerald-500' : 
-                        v.status?.toLowerCase() === 'sold' ? 'bg-blue-500/10 text-blue-500' : 'bg-amber-500/10 text-amber-500'
-                      }`}>
-                        {v.status || "Unknown"}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right px-6">
-                      <div className="flex justify-end gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
-                        <Button variant="ghost" size="icon" asChild className="h-8 w-8 rounded-lg hover:bg-primary/20 hover:text-primary"><Link to={`/vehicles/${v.id}`}><Eye className="h-4 w-4" /></Link></Button>
-                        {hasEdit && (
-                          <>
-                            <Button variant="ghost" size="icon" asChild className="h-8 w-8 rounded-lg hover:bg-foreground/20"><Link to={`/vehicles/${v.id}/edit`}><Pencil className="h-4 w-4" /></Link></Button>
-                            <Button variant="ghost" size="icon" onClick={() => setDeleteId(v.id)} className="h-8 w-8 rounded-lg hover:bg-destructive/20 hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
-                          </>
-                        )}
-                      </div>
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+      ) : view === "cards" ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {paged.map((v) => {
+            const f = soldFigure(v, soldMap);
+            const isSold = v.status === "Sold";
+            const headline = isSold ? f.amount : Number(v.price || 0);
+            const statusTone = v.status === "Available"
+              ? "bg-emerald-500/15 text-emerald-600"
+              : isSold ? "bg-blue-500/15 text-blue-600" : "bg-amber-500/15 text-amber-600";
 
-          {/* Mobile Cards View */}
-          <div className="md:hidden flex flex-col">
-            {paged.map((v, i) => (
-              <div key={v.id} className={`p-5 flex flex-col gap-4 ${i !== paged.length -1 ? 'border-b border-border/10' : ''}`}>
-                <div className="flex justify-between items-start gap-4">
-                  <div className="flex items-start gap-3">
-                     <div className="p-2 rounded-xl bg-sky-500/10 shrink-0">
-                       <Car className="h-5 w-5 text-sky-500" />
-                     </div>
-                     <div>
-                       <p className="font-semibold text-foreground text-sm">{v.year} {v.make} {v.model} {v.trim}</p>
-                       {v.vin && <p className="text-xs text-muted-foreground font-mono mt-1 w-full overflow-hidden text-ellipsis">VIN: {v.vin}</p>}
-                     </div>
-                  </div>
-                  <span className={`shrink-0 inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold uppercase tracking-wider ${
-                    v.status?.toLowerCase() === 'available' ? 'bg-emerald-500/10 text-emerald-500' : 
-                    v.status?.toLowerCase() === 'sold' ? 'bg-blue-500/10 text-blue-500' : 'bg-amber-500/10 text-amber-500'
-                  }`}>
-                    {v.status || "Unknown"}
-                  </span>
+            return (
+              <div key={v.id} className="bento-card overflow-hidden flex flex-col">
+                {/* Dark reference rail */}
+                <div className="bg-neutral-900 text-white p-4">
+                  <p className="text-[10px] font-mono uppercase tracking-widest text-white/50">
+                    {v.vin ? `VIN: ${v.vin}` : `REF-${String(v.id).slice(0, 8)}`}
+                  </p>
+                  <p className="text-base font-bold mt-1 leading-tight">
+                    {v.year} {v.make} {v.model}
+                  </p>
+                  <p className="text-[11px] text-white/60 mt-0.5">
+                    {[v.trim, v.color].filter(Boolean).join(" · ") || "—"}
+                  </p>
+                  {v.source_company && (
+                    <Link
+                      to={`/source-company/${encodeURIComponent(v.source_company)}`}
+                      className="inline-block mt-2 text-[11px] font-semibold text-sky-300 hover:underline"
+                    >
+                      {v.source_company}
+                    </Link>
+                  )}
                 </div>
-                <div className="flex gap-2 pt-2 border-t border-border/10 justify-between items-center">
-                  <span className="text-xs text-muted-foreground font-medium">{(v as any).condition || "Unknown Cond."}</span>
-                  <div className="flex gap-1.5">
-                    <Button variant="outline" size="sm" asChild className="h-8 text-xs rounded-lg border-white/10"><Link to={`/vehicles/${v.id}`}>View</Link></Button>
+
+                {/* Light detail panel */}
+                <div className="p-4 flex-1 flex flex-col gap-3">
+                  <p className="text-[11px] text-muted-foreground">
+                    {v.condition || "Unknown"} ·{" "}
+                    {isSold
+                      ? `Sold ${f.date ? shortDate(f.date) : "—"}`
+                      : `Arrived ${shortDate(v.date_arrived)}`}
+                  </p>
+
+                  <div>
+                    <p className={`text-2xl font-bold ${isSold ? "text-blue-500" : "text-foreground"}`}>
+                      {formatNaira(headline)}
+                    </p>
+                    {isSold && f.diff !== null && (
+                      <p className={`text-[11px] font-semibold ${f.diff >= 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                        Listed at {formatNaira(f.asking)} ({f.diff >= 0 ? "+" : "−"}
+                        {formatNaira(Math.abs(f.diff)).replace("₦", "₦")})
+                      </p>
+                    )}
+                    {isSold && !f.derived && (
+                      <p className="text-[11px] text-muted-foreground italic">
+                        No sale record — showing the asking price
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2">
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${statusTone}`}>
+                      {v.status || "Unknown"}
+                    </span>
+                    {v.num_keys ? (
+                      <span className="text-[10px] text-muted-foreground">{v.num_keys} key(s)</span>
+                    ) : null}
+                  </div>
+
+                  <div className="h-1 rounded-full bg-foreground/10 overflow-hidden">
+                    <div
+                      className={`h-full ${isSold ? "bg-blue-500" : "bg-emerald-500"}`}
+                      style={{ width: isSold ? "100%" : v.status === "Reserved" ? "60%" : "25%" }}
+                    />
+                  </div>
+
+                  <div className="flex gap-1.5 pt-2 border-t border-white/5 mt-auto">
+                    <Button variant="outline" size="sm" asChild className="h-8 text-xs rounded-lg border-white/10">
+                      <Link to={`/vehicles/${v.id}`}><Eye className="h-3.5 w-3.5 mr-1.5" /> Details</Link>
+                    </Button>
                     {hasEdit && (
-                      <>
-                        <Button variant="outline" size="sm" asChild className="h-8 text-xs rounded-lg border-white/10"><Link to={`/vehicles/${v.id}/edit`}>Edit</Link></Button>
-                        <Button variant="ghost" size="icon" onClick={() => setDeleteId(v.id)} className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10 hover:text-destructive"><Trash2 className="h-4 w-4" /></Button>
-                      </>
+                      <Button variant="outline" size="sm" asChild className="h-8 text-xs rounded-lg border-white/10">
+                        <Link to={`/vehicles/${v.id}/edit`}><Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit</Link>
+                      </Button>
+                    )}
+                    {hasDelete && (
+                      <Button variant="ghost" size="icon" aria-label="Delete vehicle"
+                        onClick={() => setDeleteId(v.id)}
+                        className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10">
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     )}
                   </div>
                 </div>
               </div>
-            ))}
+            );
+          })}
+        </div>
+      ) : (
+        <div className="bento-card overflow-hidden">
+          <div className="overflow-x-auto">
+            <Table className="min-w-[760px]">
+              <TableHeader className="bg-foreground/5">
+                <TableRow className="border-border/50 hover:bg-transparent">
+                  <TableHead className="px-6 font-semibold">Vehicle</TableHead>
+                  <TableHead className="font-semibold">Chassis (VIN)</TableHead>
+                  <TableHead className="font-semibold">Condition</TableHead>
+                  <TableHead className="font-semibold">Source</TableHead>
+                  <TableHead className="font-semibold">{tab === "sold" ? "Sold Date" : "Arrived"}</TableHead>
+                  <TableHead className="font-semibold">{priceColumnLabel}</TableHead>
+                  <TableHead className="font-semibold">Status</TableHead>
+                  <TableHead className="text-right px-6 font-semibold">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {paged.map((v) => {
+                  const f = soldFigure(v, soldMap);
+                  const isSold = v.status === "Sold";
+                  return (
+                    <TableRow key={v.id} className="border-border/10 hover:bg-white/5 group">
+                      <TableCell className="px-6 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2 rounded-lg bg-foreground/5 group-hover:bg-sky-500/10">
+                            <Car className="h-4 w-4 text-sky-500" />
+                          </div>
+                          <div>
+                            <p className="font-semibold text-sm">{v.year} {v.make} {v.model}</p>
+                            {v.trim && <p className="text-[11px] text-muted-foreground">{v.trim}</p>}
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        {v.vin
+                          ? <span className="font-mono text-xs bg-foreground/5 px-2 py-1 rounded-md">{v.vin}</span>
+                          : <span className="opacity-50">—</span>}
+                      </TableCell>
+                      <TableCell className="text-sm">{v.condition || "—"}</TableCell>
+                      <TableCell className="max-w-[140px] truncate text-sm" title={v.source_company || ""}>
+                        {v.source_company
+                          ? <Link to={`/source-company/${encodeURIComponent(v.source_company)}`}
+                                  className="hover:underline text-sky-500">{v.source_company}</Link>
+                          : "—"}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {isSold ? shortDate(f.date) : shortDate(v.date_arrived)}
+                      </TableCell>
+                      <TableCell>
+                        <span className={`text-sm font-bold ${isSold ? "text-blue-500" : ""}`}>
+                          {formatNaira(isSold ? f.amount : v.price)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wider ${
+                          v.status === "Available" ? "bg-emerald-500/10 text-emerald-500"
+                            : isSold ? "bg-blue-500/10 text-blue-500" : "bg-amber-500/10 text-amber-500"
+                        }`}>
+                          {v.status || "Unknown"}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-right px-6">
+                        <div className="flex justify-end gap-1">
+                          <Button variant="ghost" size="icon" asChild aria-label="View vehicle"
+                            className="h-8 w-8 rounded-lg hover:bg-sky-500/10 hover:text-sky-500">
+                            <Link to={`/vehicles/${v.id}`}><Eye className="h-4 w-4" /></Link>
+                          </Button>
+                          {hasEdit && (
+                            <Button variant="ghost" size="icon" asChild aria-label="Edit vehicle"
+                              className="h-8 w-8 rounded-lg hover:bg-foreground/10">
+                              <Link to={`/vehicles/${v.id}/edit`}><Pencil className="h-4 w-4" /></Link>
+                            </Button>
+                          )}
+                          {hasDelete && (
+                            <Button variant="ghost" size="icon" aria-label="Delete vehicle"
+                              onClick={() => setDeleteId(v.id)}
+                              className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10">
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
           </div>
-
-          {/* Pagination */}
-          {totalPages > 1 && (
-            <div className="p-6 border-t border-border/10">
-              <Pagination>
-                <PaginationContent>
-                  <PaginationItem>
-                    <PaginationPrevious 
-                      onClick={() => page > 0 && setPage(page - 1)}
-                      className={page === 0 ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                    />
-                  </PaginationItem>
-                  
-                  {[...Array(totalPages)].map((_, i) => (
-                    <PaginationItem key={i} className="hidden sm:block">
-                      <PaginationLink 
-                        isActive={page === i}
-                        onClick={() => setPage(i)}
-                        className="cursor-pointer"
-                      >
-                        {i + 1}
-                      </PaginationLink>
-                    </PaginationItem>
-                  ))}
-
-                  <PaginationItem>
-                    <PaginationNext 
-                      onClick={() => page < totalPages - 1 && setPage(page + 1)}
-                      className={page >= totalPages - 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
-                    />
-                  </PaginationItem>
-                </PaginationContent>
-              </Pagination>
-              <div className="text-center mt-4 text-xs text-muted-foreground sm:hidden">
-                Page {page + 1} of {totalPages}
-              </div>
-            </div>
-          )}
         </div>
       )}
 
-      {/* Delete confirmation dialog */}
+      <CustomPagination
+        page={safePage}
+        pageCount={pageCount}
+        pageSize={pageSize}
+        total={filtered.length}
+        onPageChange={setPage}
+        onPageSizeChange={(s) => { setPageSize(s); setPage(0); }}
+        sizes={[20, 50, 100]}
+      />
+
+      {/* Delete one */}
       <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent className="rounded-3xl glass-panel border-white/10 p-6 shadow-2xl">
+        <AlertDialogContent className="rounded-3xl glass-panel border-white/10">
           <AlertDialogHeader>
-            <AlertDialogTitle className="text-xl font-bold text-foreground">Delete Vehicle</AlertDialogTitle>
-            <AlertDialogDescription className="text-base text-muted-foreground">
-              Are you absolutely sure you want to delete this vehicle? This action cannot be undone.
+            <AlertDialogTitle>Delete this vehicle?</AlertDialogTitle>
+            <AlertDialogDescription>
+              The vehicle and its images will be removed. This cannot be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
-          <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel className="rounded-xl border-white/10 text-foreground hover:bg-white/5 sm:mt-0">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { if (deleteId) deleteMutation.mutate(deleteId); setDeleteId(null); }} className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-lg shadow-destructive/20 border-none">
-              Delete Vehicle
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl border-white/10">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
+              className="rounded-xl bg-destructive hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Delete all sold */}
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <AlertDialogContent className="rounded-3xl glass-panel border-white/10">
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete all {soldIds.length} sold vehicle{soldIds.length === 1 ? "" : "s"}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Every stock vehicle marked Sold will be removed, along with its images. The sales
+              themselves are kept, but their vehicle links are cleared. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="rounded-xl border-white/10">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => bulkDeleteMutation.mutate()}
+              className="rounded-xl bg-destructive hover:bg-destructive/90"
+            >
+              {bulkDeleteMutation.isPending ? "Deleting..." : `Delete ${soldIds.length}`}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

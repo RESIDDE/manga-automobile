@@ -1,6 +1,12 @@
 import { supabase } from "@/integrations/supabase/client";
 
-export type AuditAction = "LOGIN" | "SIGNUP" | "CREATE" | "UPDATE" | "DELETE" | "EXPORT" | "ROLE_CHANGE" | "INVITE" | "OTHER";
+export type AuditAction =
+  | "LOGIN" | "LOGOUT" | "SIGNUP"
+  | "CREATE" | "UPDATE" | "DELETE"
+  | "EXPORT" | "PRINT" | "VIEW" | "SEARCH"
+  | "STATUS_CHANGE" | "PAYMENT" | "SIGNATURE"
+  | "PERMISSION_CHANGE" | "ROLE_CHANGE" | "INVITE"
+  | "OTHER";
 
 export async function logAction(
   action: AuditAction,
@@ -52,6 +58,14 @@ export function describeLog(log: any): string {
     UPDATE:      `${name} updated a ${entity.toLowerCase()} record`,
     DELETE:      `${name} deleted a ${entity.toLowerCase()} record`,
     EXPORT:      `${name} exported ${entity.toLowerCase()} data`,
+    PRINT:       `${name} printed a ${entity.toLowerCase()} document`,
+    LOGOUT:      `${name} signed out`,
+    VIEW:        `${name} opened a ${entity.toLowerCase()} record`,
+    SEARCH:      `${name} searched ${entity.toLowerCase()}`,
+    STATUS_CHANGE: `${name} changed a ${entity.toLowerCase()} status`,
+    PAYMENT:     `${name} recorded a payment`,
+    SIGNATURE:   `${name} captured a signature`,
+    PERMISSION_CHANGE: `${name} changed role permissions`,
     ROLE_CHANGE: `${name} changed a user role`,
     INVITE:      `${name} invited a new user`,
     OTHER:       `${name} performed an action on ${entity}`,

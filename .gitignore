@@ -34,3 +34,6 @@ supabase/.temp/
 # SQL Backups and temp files
 old_schema.sql
 *.sql.bak
+
+# Claude Code local settings (may contain secrets)
+.claude/settings.local.json
