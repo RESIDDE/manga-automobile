@@ -34,6 +34,10 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { canCreate, canDelete, canEdit, isUnrestricted } from "@/lib/permissions";
 import { logAction } from "@/lib/logger";
 import { buildSoldPriceMap, soldFigure, soldTotals } from "@/lib/soldPrice";
+import { isStand } from "@/lib/inventoryType";
+import { useVehicleMovements } from "@/hooks/useVehicleMovements";
+import { movementStateOf } from "@/lib/vehicleMovements";
+import { VehicleMovementDialog } from "@/components/VehicleMovementDialog";
 import { firstWorkingSelect } from "@/lib/dbCompat";
 import { formatNaira } from "@/lib/numberToWords";
 import {
@@ -64,12 +68,13 @@ const ChartTooltip = ({ active, payload, label }: any) => {
   );
 };
 
-const StatTile = ({ label, value, tone = "text-foreground" }: {
-  label: string; value: string | number; tone?: string;
+const StatTile = ({ label, value, sub, tone = "text-foreground" }: {
+  label: string; value: string | number; sub?: string; tone?: string;
 }) => (
   <div className="bento-card p-4">
     <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">{label}</p>
     <p className={`text-2xl font-bold mt-1 ${tone}`}>{value}</p>
+    {sub && <p className="text-[11px] text-muted-foreground mt-0.5">{sub}</p>}
   </div>
 );
 
@@ -106,9 +111,11 @@ export default function VehiclesList() {
   const queryClient = useQueryClient();
   const months = useMemo(() => monthOptions(), []);
 
-  // Stock only: 'service' rows are workshop-only cars, never part of inventory
+  // The stand list and the sale picker ask for different columns, so they get
+  // their own cache keys. Both still answer to an invalidate of ["vehicles"],
+  // which TanStack matches by prefix.
   const { data: vehicles = [], isLoading } = useQuery({
-    queryKey: ["vehicles"],
+    queryKey: ["vehicles", "stand"],
     queryFn: async () => {
       // Only the columns the list, the tiles and the exports use: the signature
       // and description columns are large text and belong to the detail page.
@@ -135,9 +142,9 @@ export default function VehiclesList() {
             .order("created_at", { ascending: false }) as any,
         ]
       );
-      return (data as any[]).filter(
-        (v) => (v.inventory_type ?? "main") === "main" && v.status !== "Customer Car"
-      );
+      // Stand stock only: workshop cars and cars snapped outside the stand each
+      // have their own home. Positive test — see src/lib/inventoryType.ts.
+      return (data as any[]).filter((v) => isStand(v) && v.status !== "Customer Car");
     },
   });
 
@@ -155,6 +162,16 @@ export default function VehiclesList() {
   });
 
   const soldMap = useMemo(() => buildSoldPriceMap(sales), [sales]);
+
+  // Who is on the stand right now. Counted over every active car, not the
+  // filtered set: "how many cars are in the stand" must not change because
+  // someone typed in the search box.
+  const activeVehicles = useMemo(
+    () => vehicles.filter((v) => v.status !== "Sold"),
+    [vehicles]
+  );
+  const { movements, states: movementStates, counts } = useVehicleMovements(activeVehicles);
+  const [movementVehicle, setMovementVehicle] = useState<any>(null);
 
   const sources = useMemo(() => {
     const set = new Set<string>();
@@ -413,7 +430,11 @@ export default function VehiclesList() {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.kind === "active" ? (
           <>
-            <StatTile label="Units in stock" value={stats.units} />
+            <StatTile
+              label="In the stand"
+              value={counts.onStand}
+              sub={`of ${counts.total} active${counts.signedOut ? ` · ${counts.signedOut} signed out` : ""}`}
+            />
             <StatTile label="Total cost value" value={formatNaira(stats.cost)} />
             <StatTile label="Total asking value" value={formatNaira(stats.asking)} tone="text-sky-500" />
             <StatTile

@@ -4,7 +4,7 @@ export type AuditAction =
   | "LOGIN" | "LOGOUT" | "SIGNUP"
   | "CREATE" | "UPDATE" | "DELETE"
   | "EXPORT" | "PRINT" | "VIEW" | "SEARCH"
-  | "STATUS_CHANGE" | "PAYMENT" | "SIGNATURE"
+  | "STATUS_CHANGE" | "PAYMENT" | "SIGNATURE" | "MOVEMENT"
   | "PERMISSION_CHANGE" | "ROLE_CHANGE" | "INVITE"
   | "OTHER";
 
@@ -64,6 +64,7 @@ export function describeLog(log: any): string {
     SEARCH:      `${name} searched ${entity.toLowerCase()}`,
     STATUS_CHANGE: `${name} changed a ${entity.toLowerCase()} status`,
     PAYMENT:     `${name} recorded a payment`,
+    MOVEMENT:    `${name} signed a vehicle in or out`,
     SIGNATURE:   `${name} captured a signature`,
     PERMISSION_CHANGE: `${name} changed role permissions`,
     ROLE_CHANGE: `${name} changed a user role`,

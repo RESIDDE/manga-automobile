@@ -1006,6 +1006,158 @@ export type Database = {
           },
         ]
       }
+      staff: {
+        Row: {
+          id: string
+          full_name: string
+          designation: string | null
+          phone: string | null
+          account_number: string | null
+          bank_name: string | null
+          base_salary: number
+          active: boolean
+          notes: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          full_name: string
+          designation?: string | null
+          phone?: string | null
+          account_number?: string | null
+          bank_name?: string | null
+          base_salary?: number
+          active?: boolean
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          full_name?: string
+          designation?: string | null
+          phone?: string | null
+          account_number?: string | null
+          bank_name?: string | null
+          base_salary?: number
+          active?: boolean
+          notes?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      salary_lines: {
+        Row: {
+          id: string
+          period: string
+          staff_id: string | null
+          staff_name: string
+          designation: string | null
+          account_number: string | null
+          bank_name: string | null
+          actual_salary: number
+          loan_amount: number
+          opening_balance: number
+          deduction: number
+          notes: string | null
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          period: string
+          staff_id?: string | null
+          staff_name: string
+          designation?: string | null
+          account_number?: string | null
+          bank_name?: string | null
+          actual_salary?: number
+          loan_amount?: number
+          opening_balance?: number
+          deduction?: number
+          notes?: string | null
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          period?: string
+          staff_id?: string | null
+          staff_name?: string
+          designation?: string | null
+          account_number?: string | null
+          bank_name?: string | null
+          actual_salary?: number
+          loan_amount?: number
+          opening_balance?: number
+          deduction?: number
+          notes?: string | null
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "salary_lines_staff_id_fkey"
+            columns: ["staff_id"]
+            isOneToOne: false
+            referencedRelation: "staff"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vehicle_movements: {
+        Row: {
+          id: string
+          vehicle_id: string
+          direction: string
+          moved_at: string
+          person_name: string
+          person_phone: string | null
+          reason: string | null
+          destination: string | null
+          expected_return: string | null
+          notes: string | null
+          recorded_by: string | null
+          recorded_by_name: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          vehicle_id: string
+          direction: string
+          moved_at?: string
+          person_name: string
+          person_phone?: string | null
+          reason?: string | null
+          destination?: string | null
+          expected_return?: string | null
+          notes?: string | null
+          recorded_by?: string | null
+          recorded_by_name?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          vehicle_id?: string
+          direction?: string
+          moved_at?: string
+          person_name?: string
+          person_phone?: string | null
+          reason?: string | null
+          destination?: string | null
+          expected_return?: string | null
+          notes?: string | null
+          recorded_by?: string | null
+          recorded_by_name?: string | null
+          created_at?: string
+        }
+        Relationships: []
+      }
       vehicles: {
         Row: {
           color: string | null

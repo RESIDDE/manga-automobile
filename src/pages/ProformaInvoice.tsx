@@ -380,7 +380,9 @@ export default function ProformaInvoice() {
           .from("vehicles")
           .select("id, make, model, year, vin, price, condition, transmission, inventory_type")
           .eq("status", "Available")
-          .or("inventory_type.is.null,inventory_type.eq.main"),
+          // Outside cars are quotable at their office price; only the workshop
+          // is excluded. Kept as .or() rather than .neq() so NULL rows survive.
+          .or("inventory_type.is.null,inventory_type.eq.main,inventory_type.eq.external"),
         () => supabase
           .from("vehicles")
           .select("id, make, model, year, vin, price, condition, transmission")

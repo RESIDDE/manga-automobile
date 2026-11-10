@@ -46,6 +46,7 @@ import { SignaturePad } from "@/components/SignaturePad";
 import { QrSignDialog } from "@/lib/qrHelpers";
 import { CurrencyInput } from "@/components/CurrencyInput";
 import { VIN_MAX_LENGTH } from "@/lib/constants";
+import { isExternal, isSellableInventory } from "@/lib/inventoryType";
 import {
   buildReceiptLedger, derivePaymentState, paymentLabel, receiptMatches, receiptNumber,
 } from "@/lib/receipts";
@@ -230,7 +231,9 @@ export default function Sales() {
   }, [queryClient]);
 
   const { data: vehicles = [] } = useQuery({
-    queryKey: ["vehicles"],
+    // Its own key: this picker selects a different column set from the stand
+    // list, and a shared key let whichever page mounted first win the cache.
+    queryKey: ["vehicles", "picker"],
     queryFn: async () => {
       // Workshop-only cars ('service') are never offered for sale — but
       // inventory_type also arrives with a migration, so the read degrades to
@@ -238,10 +241,10 @@ export default function Sales() {
       return withSchemaFallback(
         () => supabase
           .from("vehicles")
-          .select("id, make, model, year, color, vin, status, inventory_type"),
+          .select("id, make, model, year, color, vin, status, price, inventory_type"),
         () => supabase
           .from("vehicles")
-          .select("id, make, model, year, color, vin, status"),
+          .select("id, make, model, year, color, vin, status, price"),
         ["inventory_type"]
       );
     },
@@ -348,7 +351,10 @@ export default function Sales() {
     const onThisSale = new Set(form.selected_vehicle_ids);
     return (vehicles as any[]).filter((v) => {
       if (onThisSale.has(v.id)) return true;
-      if ((v.inventory_type ?? "main") !== "main") return false;
+      // Only the workshop is excluded. Testing positively matters: on a database
+      // without inventory_type every row would fail a "not main" test, which
+      // would empty the picker.
+      if (!isSellableInventory(v)) return false;
       return v.status !== "Sold";
     });
   }, [vehicles, form.selected_vehicle_ids]);
@@ -1837,7 +1843,19 @@ export default function Sales() {
                       }}
                     >
                       <Checkbox checked={form.selected_vehicle_ids.includes(v.id)} className="data-[state=checked]:bg-violet-500 pointer-events-none" />
-                      <span className="text-[13px] font-medium leading-tight">{v.year} {v.make} {v.model}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className="block text-[13px] font-medium leading-tight truncate">
+                          {v.year} {v.make} {v.model}
+                        </span>
+                        {isExternal(v) && (
+                          <span className="mt-0.5 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-amber-500">
+                            Outside
+                            {v.price ? <span className="font-semibold normal-case tracking-normal text-muted-foreground">
+                              · {formatNaira(v.price)}
+                            </span> : null}
+                          </span>
+                        )}
+                      </span>
                     </div>
                   ))}
                   {selectableVehicles.filter((v) => `${v.year} ${v.make} ${v.model} ${v.vin ?? ""}`.toLowerCase().includes(vehicleSearch.toLowerCase())).length === 0 && (

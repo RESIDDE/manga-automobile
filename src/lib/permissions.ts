@@ -12,12 +12,14 @@ export type AppRole = "super_admin" | "admin" | "sales" | "mechanic" | (string &
 export type PageKey =
   | "dashboard"
   | "vehicles"
+  | "outside-vehicles"
   | "customers"
   | "sales"
   | "authority-to-sell"
   | "performance-quotes"
   | "meetings"
-  | "property-intake";
+  | "property-intake"
+  | "salary";
 
 export type PermissionAction = "view" | "create" | "edit" | "delete";
 
@@ -26,12 +28,14 @@ export const PERMISSION_ACTIONS: PermissionAction[] = ["view", "create", "edit",
 export const ALL_PAGES: { key: PageKey; label: string; path: string }[] = [
   { key: "dashboard",          label: "Dashboard",        path: "/dashboard" },
   { key: "vehicles",           label: "Vehicles",         path: "/vehicles" },
+  { key: "outside-vehicles",   label: "Outside Cars",     path: "/outside-vehicles" },
   { key: "customers",          label: "Customers",        path: "/customers" },
   { key: "sales",              label: "Sales",            path: "/sales" },
   { key: "authority-to-sell",  label: "Auth. Form",       path: "/authority-to-sell" },
   { key: "performance-quotes", label: "Proforma Invoice", path: "/performance-quotes" },
   { key: "meetings",           label: "Meetings",         path: "/meetings" },
   { key: "property-intake",    label: "Property Intake",  path: "/property-intake" },
+  { key: "salary",             label: "Salary Schedule",  path: "/salary-schedule" },
 ];
 
 export type RolePermissions = Record<PermissionAction, PageKey[]>;
@@ -49,12 +53,16 @@ export const isUnrestricted = (role: AppRole | null): boolean =>
 // Used when the stored matrix is missing or unreadable, so a bad read degrades
 // to sane access rather than locking everybody out.
 
+// Payroll is deliberately absent from every default below: it names what each
+// member of staff earns and the account it is paid into. Only admin has it out
+// of the box, and an admin hands it to an HR role by ticking the box in
+// Settings — a decision somebody makes, never one inherited from a template.
 const SALES_PAGES: PageKey[] = [
-  "dashboard", "vehicles", "customers", "sales", "meetings",
+  "dashboard", "vehicles", "outside-vehicles", "customers", "sales", "meetings",
   "property-intake", "authority-to-sell", "performance-quotes",
 ];
 const SALES_WRITE: PageKey[] = [
-  "vehicles", "customers", "sales", "property-intake",
+  "vehicles", "outside-vehicles", "customers", "sales", "property-intake",
   "authority-to-sell", "performance-quotes",
 ];
 

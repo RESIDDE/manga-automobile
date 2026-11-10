@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useState, useEffect, useRef } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -31,6 +31,9 @@ import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { SignaturePad } from "@/components/SignaturePad";
 import { logAction } from "@/lib/logger";
 import { isMissingSchema, omitKeys, warnOnce } from "@/lib/dbCompat";
+import { INVENTORY_EXTERNAL, isExternal } from "@/lib/inventoryType";
+import { isStandardMarkup, marginOf, markupLabel, officeFollowsActual, officePriceFor } from "@/lib/officePrice";
+import { formatNaira } from "@/lib/numberToWords";
 
 interface FormData {
   make: string;
@@ -107,10 +110,28 @@ export default function VehicleForm() {
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
   const [existingImages, setExistingImages] = useState<{ id: string; image_url: string }[]>([]);
   const [submitting, setSubmitting] = useState(false);
+  /** A car snapped outside the stand: cost_price is the owner's price, price is ours. */
+  const external = isExternal(form);
+  const officeIsStandard = isStandardMarkup(form.cost_price, form.price);
   const { role } = useAuth();
   const { permissions } = usePermissions();
   const hasEdit = canEdit(role, "vehicles", permissions);
   const hasCreate = canCreate(role, "vehicles", permissions);
+
+  // "Add outside car" seeds the type — but only on an untouched new form, so a
+  // restored draft is never silently reclassified under the user.
+  const [searchParams] = useSearchParams();
+  const seededType = useRef(false);
+  useEffect(() => {
+    if (isEdit || seededType.current) return;
+    if (searchParams.get("type") !== INVENTORY_EXTERNAL) return;
+    seededType.current = true;
+    setForm((prev) =>
+      prev.inventory_type === "main" && !prev.make && !prev.model
+        ? { ...prev, inventory_type: INVENTORY_EXTERNAL }
+        : prev
+    );
+  }, [isEdit, searchParams, setForm]);
 
   useEffect(() => {
     if (isEdit && !hasEdit) {
@@ -195,6 +216,9 @@ export default function VehicleForm() {
     if (!form.model.trim()) e.model = "Model is required";
     if (!form.year || isNaN(Number(form.year))) e.year = "Valid year required";
     if (form.vin && form.vin.length > VIN_MAX_LENGTH) e.vin = `Chassis number must be ≤${VIN_MAX_LENGTH} characters`;
+    // price is NOT NULL and parseFloat("") is 0, so without this an outside car
+    // could be quoted at ₦0 on a proforma invoice.
+    if (external && !(parseFloat(form.price) > 0)) e.price = "Office price is required for an outside car";
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -323,7 +347,7 @@ export default function VehicleForm() {
         make: payload.make, model: payload.model, vin: payload.vin,
       });
       clearDraft();
-      navigate("/vehicles");
+      navigate(payload.inventory_type === INVENTORY_EXTERNAL ? "/outside-vehicles" : "/vehicles");
     } catch (err: any) {
       toast.error(err.message || "Failed to save vehicle");
     } finally {
@@ -465,8 +489,78 @@ export default function VehicleForm() {
             <CardTitle>Pricing & Status</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
-            {field("price", "Selling Price", "text", false, true)}
-            {field("cost_price", "Cost Price", "text", false, true)}
+            {external ? (
+              <>
+                {/* The owner's figure comes first: the office price is derived from it. */}
+                <div className="space-y-1">
+                  <Label htmlFor="cost_price">Actual price (owner's price)</Label>
+                  <CurrencyInput
+                    id="cost_price"
+                    value={form.cost_price}
+                    onChange={(e) => {
+                      const nextActual = e.target.value;
+                      setForm((prev) => ({
+                        ...prev,
+                        cost_price: nextActual,
+                        // The office price fills itself from the owner's price
+                        // while it is still empty or at the standard +10%. Once
+                        // someone has negotiated it, their figure is left alone.
+                        price: officeFollowsActual(prev.cost_price, prev.price)
+                          ? String(officePriceFor(nextActual))
+                          : prev.price,
+                      }));
+                    }}
+                  />
+                  <p className="text-[11px] text-muted-foreground">What the owner wants for it.</p>
+                </div>
+
+                <div className="space-y-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <Label htmlFor="price">Office price (what we quote)</Label>
+                    {!officeIsStandard && Number(form.cost_price) > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setForm((prev) => ({
+                          ...prev, price: String(officePriceFor(prev.cost_price)),
+                        }))}
+                        className="text-[11px] font-semibold text-amber-600 hover:underline"
+                      >
+                        Reset to +10%
+                      </button>
+                    )}
+                  </div>
+                  <CurrencyInput
+                    id="price"
+                    value={form.price}
+                    onChange={(e) => setForm({ ...form, price: e.target.value })}
+                  />
+                  {Number(form.cost_price) > 0 ? (
+                    <p className="text-[11px] flex flex-wrap items-center gap-1.5">
+                      <span className={`font-bold px-1.5 py-0.5 rounded-md ${
+                        officeIsStandard
+                          ? "bg-emerald-500/15 text-emerald-600"
+                          : "bg-amber-500/15 text-amber-600"
+                      }`}>
+                        {officeIsStandard ? "+10%" : `Edited · ${markupLabel(form.cost_price, form.price)}`}
+                      </span>
+                      <span className="text-muted-foreground">
+                        You keep {formatNaira(marginOf(form.cost_price, form.price))}
+                      </span>
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground">
+                      Fills at the owner's price + 10% once you enter it.
+                    </p>
+                  )}
+                  {errors.price && <p className="text-sm text-destructive">{errors.price}</p>}
+                </div>
+              </>
+            ) : (
+              <>
+                {field("price", "Selling Price", "text", false, true)}
+                {field("cost_price", "Cost Price", "text", false, true)}
+              </>
+            )}
 
             <div className="space-y-1">
               <Label>Status</Label>
@@ -516,12 +610,15 @@ export default function VehicleForm() {
               >
                 <SelectTrigger id="inventory_type"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="main">Stock (for sale)</SelectItem>
+                  <SelectItem value="main">Stock (on our stand)</SelectItem>
+                  <SelectItem value="external">Outside the stand (brokered)</SelectItem>
                   <SelectItem value="service">Workshop only (not for sale)</SelectItem>
                 </SelectContent>
               </Select>
               <p className="text-[11px] text-muted-foreground">
-                Workshop cars stay out of the inventory lists and off every sale and quote picker.
+                {external
+                  ? "Outside cars are listed on their own page and can still be sold or quoted at the office price."
+                  : "Workshop cars stay out of the inventory lists and off every sale and quote picker."}
               </p>
             </div>
           </CardContent>
@@ -658,7 +755,7 @@ export default function VehicleForm() {
           <Button
             type="button"
             variant="outline"
-            onClick={() => navigate("/vehicles")}
+            onClick={() => navigate(external ? "/outside-vehicles" : "/vehicles")}
           >
             Cancel
           </Button>

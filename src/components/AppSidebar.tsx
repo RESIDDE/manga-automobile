@@ -2,9 +2,9 @@ import { useEffect, useMemo, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import {
-  LayoutDashboard, Car, Users, FileSignature,
+  LayoutDashboard, Car, Users, FileSignature, MapPinned,
   Crown, Calendar, Building2, Search, ChevronsLeft, ChevronsRight,
-  ChevronDown, Plus, LogOut,
+  ChevronDown, Plus, LogOut, Wallet,
 } from "lucide-react";
 import { NairaIcon } from "@/components/NairaIcon";
 import { NavLink } from "@/components/NavLink";
@@ -42,6 +42,13 @@ const ALL_NAV_ITEMS: NavItem[] = [
       { title: "Add Vehicle", url: "/vehicles/new", pageKey: "vehicles" },
     ],
   },
+  {
+    title: "Outside Cars", url: "/outside-vehicles", pageKey: "outside-vehicles", icon: MapPinned,
+    children: [
+      { title: "All Outside Cars", url: "/outside-vehicles", pageKey: "outside-vehicles", end: true },
+      { title: "Add Outside Car", url: "/vehicles/new?type=external", pageKey: "outside-vehicles" },
+    ],
+  },
   { title: "Sales", url: "/sales", pageKey: "sales", icon: (props) => <NairaIcon {...props} /> },
   { title: "Customers", url: "/customers", pageKey: "customers", icon: Users },
   {
@@ -54,6 +61,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
   },
   { title: "Property", url: "/property-intake", pageKey: "property-intake", icon: Building2 },
   { title: "Meetings", url: "/meetings", pageKey: "meetings", icon: Calendar },
+  { title: "Salary", url: "/salary-schedule", pageKey: "salary", icon: Wallet },
 ];
 
 const ROW = "flex items-center gap-3 rounded-xl px-3 h-10 text-sm font-medium transition-colors duration-200";
