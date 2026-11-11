@@ -20,7 +20,8 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  AlertTriangle, CopyPlus, Download, FileText, Printer, PlusCircle, Trash2, Wallet,
+  AlertTriangle, CalendarClock, CopyPlus, Download, FileText, Printer,
+  PlusCircle, Trash2, Users, Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
 import { exportToCSV, printTable, downloadTableAsPDF } from "@/lib/exportHelpers";
@@ -31,8 +32,8 @@ import { logAction } from "@/lib/logger";
 import { isMissingSchema, warnOnce } from "@/lib/dbCompat";
 import { formatNaira } from "@/lib/numberToWords";
 import {
-  carryForward, closingBalance, dateToPeriod, lineWarnings, periodKey,
-  periodLabel, periodOptions, periodShortLabel, periodToDate, previousPeriod,
+  carryForward, closingBalance, dateToPeriod, latestPeriodBefore, lineWarnings,
+  periodKey, periodLabel, periodOptions, periodShortLabel, periodToDate,
   receivingAmount, scheduleTotals, type SalaryLine,
 } from "@/lib/salary";
 
@@ -174,6 +175,16 @@ export default function SalarySchedule() {
     },
   });
 
+  /**
+   * The month a new sheet is started from: the most recent one that actually
+   * has rows, not simply last month — a skipped month must not strand the
+   * office with nothing to copy.
+   */
+  const sourcePeriod = useMemo(
+    () => latestPeriodBefore(period, knownPeriods),
+    [period, knownPeriods]
+  );
+
   const totals = useMemo(() => scheduleTotals(lines), [lines]);
   const months = useMemo(() => periodOptions(knownPeriods), [knownPeriods]);
   const warningCount = useMemo(
@@ -248,21 +259,25 @@ export default function SalarySchedule() {
   });
 
   /**
-   * Start this month from last month's sheet: same people, same salaries, loan
-   * balances rolled forward. Refuses on a month that already has rows, so the
-   * button can never double the payroll.
+   * Start this month from the last sheet that exists: the same people, the same
+   * salaries and bank details, with loan balances rolled forward and a final
+   * instalment capped at what is still owed.
+   *
+   * Guarded on the row count rather than on the button being hidden, so a
+   * double-click, a stale tab or a second person doing it at the same moment
+   * cannot pay the payroll twice.
    */
-  const copyPrevious = useMutation({
+  const startFromPrevious = useMutation({
     mutationFn: async () => {
       if (lines.length) throw new Error("This month already has rows");
+      if (!sourcePeriod) throw new Error("There is no earlier sheet to copy");
 
-      const source = previousPeriod(period);
       const { data, error } = await supabase
         .from("salary_lines").select(COLUMNS)
-        .eq("period", periodToDate(source))
+        .eq("period", periodToDate(sourcePeriod))
         .order("sort_order", { ascending: true });
       if (error) throw error;
-      if (!data?.length) throw new Error(`Nothing to copy — ${periodShortLabel(source)} is empty`);
+      if (!data?.length) throw new Error(`Nothing to copy — ${periodShortLabel(sourcePeriod)} is empty`);
 
       const rows = carryForward(data as unknown as SalaryLine[])
         .map((line) => ({ ...line, period: periodToDate(period) }));
@@ -271,12 +286,74 @@ export default function SalarySchedule() {
       return rows.length;
     },
     onSuccess: (count) => {
-      toast.success(`Brought ${count} staff forward from ${periodShortLabel(previousPeriod(period))}`);
-      logAction("CREATE", "salary_line", null, { period, copiedFrom: previousPeriod(period), count });
+      toast.success(
+        `${periodShortLabel(period)} started — ${count} staff brought forward from ${periodShortLabel(sourcePeriod!)}`
+      );
+      logAction("CREATE", "salary_line", null, { period, copiedFrom: sourcePeriod, count });
       refresh();
     },
-    onError: (error: any) => toast.error(error?.message ?? "Could not copy last month"),
+    onError: (error: any) => toast.error(error?.message ?? "Could not start the month"),
   });
+
+  /**
+   * The other way to start: everybody currently on the roster, at their usual
+   * salary and with no loans. This is what the very first month uses, when
+   * there is no earlier sheet to carry forward from.
+   */
+  const startFromRoster = useMutation({
+    mutationFn: async () => {
+      if (lines.length) throw new Error("This month already has rows");
+
+      const { data, error } = await supabase
+        .from("staff")
+        .select("id, full_name, designation, account_number, bank_name, base_salary")
+        .eq("active", true)
+        .order("full_name", { ascending: true });
+      if (error) throw error;
+      if (!data?.length) throw new Error("No active staff on the roster yet");
+
+      const rows = data.map((person: any, index: number) => ({
+        period: periodToDate(period),
+        staff_id: person.id,
+        staff_name: person.full_name,
+        designation: person.designation,
+        account_number: person.account_number,
+        bank_name: person.bank_name,
+        actual_salary: person.base_salary ?? 0,
+        loan_amount: 0,
+        opening_balance: 0,
+        deduction: 0,
+        sort_order: index,
+      }));
+      const { error: insertError } = await supabase.from("salary_lines").insert(rows as any);
+      if (insertError) throw insertError;
+      return rows.length;
+    },
+    onSuccess: (count) => {
+      toast.success(`${periodShortLabel(period)} started — ${count} staff from the roster`);
+      logAction("CREATE", "salary_line", null, { period, from: "roster", count });
+      refresh();
+    },
+    onError: (error: any) => toast.error(error?.message ?? "Could not start the month"),
+  });
+
+  const starting = startFromPrevious.isPending || startFromRoster.isPending;
+  /** An empty month is a month waiting to be started, not one to type by hand. */
+  const canStart = !isLoading && !isError && lines.length === 0;
+
+  /**
+   * The month we are actually in, when it has no sheet and an earlier one does.
+   *
+   * Nobody should have to notice that a new month has begun. Looking at any
+   * older sheet says so, with the way to start it — which is also why the
+   * banner is not shown while that month is already on screen: the empty state
+   * below is saying the same thing better.
+   */
+  const thisMonth = periodKey();
+  const unstartedMonth =
+    period !== thisMonth && knownPeriods.length > 0 && !knownPeriods.includes(thisMonth)
+      ? thisMonth
+      : null;
 
   useEffect(() => {
     if (!pendingFocus.current) return;
@@ -408,9 +485,20 @@ export default function SalarySchedule() {
           </DropdownMenu>
 
           {hasCreate && (
-            <Button size="sm" className="h-9" onClick={() => addLine.mutate()} disabled={addLine.isPending}>
-              <PlusCircle className="h-4 w-4 mr-1.5" /> Add staff
-            </Button>
+            canStart ? (
+              <Button
+                size="sm" className="h-9"
+                onClick={() => (sourcePeriod ? startFromPrevious : startFromRoster).mutate()}
+                disabled={starting}
+              >
+                <CopyPlus className="h-4 w-4 mr-1.5" />
+                {starting ? "Starting…" : `Start ${periodShortLabel(period)}`}
+              </Button>
+            ) : (
+              <Button size="sm" className="h-9" onClick={() => addLine.mutate()} disabled={addLine.isPending}>
+                <PlusCircle className="h-4 w-4 mr-1.5" /> Add staff
+              </Button>
+            )
           )}
         </div>
       </div>
@@ -430,6 +518,25 @@ export default function SalarySchedule() {
           sub="Salary − deductions" tone="text-emerald-600"
         />
       </div>
+
+      {unstartedMonth && hasCreate && (
+        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/25 bg-primary/5 px-4 py-3">
+          <div className="flex items-start gap-2.5">
+            <CalendarClock className="h-4 w-4 mt-0.5 shrink-0 text-primary" />
+            <div>
+              <p className="text-[13px] font-semibold">
+                {periodLabel(unstartedMonth)} has not been started yet.
+              </p>
+              <p className="text-[12px] text-muted-foreground">
+                Carry the last sheet forward instead of typing it again.
+              </p>
+            </div>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setPeriod(unstartedMonth)}>
+            Start {periodShortLabel(unstartedMonth)}
+          </Button>
+        </div>
+      )}
 
       {warningCount > 0 && (
         <div className="flex items-center gap-2 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[13px] text-amber-700">
@@ -476,21 +583,27 @@ export default function SalarySchedule() {
               <TableRow>
                 <TableCell colSpan={11} className="py-12 text-center">
                   <p className="text-sm font-medium">No sheet for {periodLabel(period)} yet.</p>
-                  <p className="text-[13px] text-muted-foreground mt-1">
-                    Bring last month's staff forward, or add them one at a time.
+                  <p className="text-[13px] text-muted-foreground mt-1 max-w-md mx-auto">
+                    {sourcePeriod
+                      ? `Carry ${periodShortLabel(sourcePeriod)} forward and this month is ready — same staff, same salaries, loan balances rolled down. Then just adjust what changed.`
+                      : "Start from the staff roster, or add people one at a time."}
                   </p>
                   {hasCreate && (
-                    <div className="flex items-center justify-center gap-2 mt-4">
+                    <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+                      {sourcePeriod && (
+                        <Button size="sm" onClick={() => startFromPrevious.mutate()} disabled={starting}>
+                          <CopyPlus className="h-4 w-4 mr-1.5" />
+                          Carry forward from {periodShortLabel(sourcePeriod)}
+                        </Button>
+                      )}
                       <Button
-                        variant="outline" size="sm"
-                        onClick={() => copyPrevious.mutate()}
-                        disabled={copyPrevious.isPending}
+                        variant={sourcePeriod ? "outline" : "default"} size="sm"
+                        onClick={() => startFromRoster.mutate()} disabled={starting}
                       >
-                        <CopyPlus className="h-4 w-4 mr-1.5" />
-                        Copy {periodShortLabel(previousPeriod(period))}
+                        <Users className="h-4 w-4 mr-1.5" /> Use the staff roster
                       </Button>
-                      <Button size="sm" onClick={() => addLine.mutate()}>
-                        <PlusCircle className="h-4 w-4 mr-1.5" /> Add staff
+                      <Button variant="ghost" size="sm" onClick={() => addLine.mutate()} disabled={starting}>
+                        <PlusCircle className="h-4 w-4 mr-1.5" /> Add one by one
                       </Button>
                     </div>
                   )}

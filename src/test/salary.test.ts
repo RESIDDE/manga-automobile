@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   carryForward, closingBalance, dateToPeriod, grandTotal, isOverDeducted,
+  latestPeriodBefore,
   isOverRepaid, lineWarnings, nextPeriod, periodKey, periodLabel, periodOptions,
   periodShortLabel, periodToDate, previousPeriod, receivingAmount,
   scheduleTotals, type SalaryLine,
@@ -158,6 +159,33 @@ describe("carryForward", () => {
 
   it("keeps the S/N order of the sheet", () => {
     expect(carryForward([{ staff_name: "A" }, { staff_name: "B" }]).map((l) => l.sort_order)).toEqual([0, 1]);
+  });
+});
+
+describe("latestPeriodBefore", () => {
+  const known = ["2026-08", "2026-10"];
+
+  it("finds the month a new sheet should be started from", () => {
+    expect(latestPeriodBefore("2026-11", known)).toBe("2026-10");
+  });
+
+  it("skips over a month nobody filled in", () => {
+    // September was never typed up; November must still offer October.
+    expect(latestPeriodBefore("2026-09", known)).toBe("2026-08");
+    expect(latestPeriodBefore("2027-03", known)).toBe("2026-10");
+  });
+
+  it("ignores the month itself and anything after it", () => {
+    expect(latestPeriodBefore("2026-10", known)).toBe("2026-08");
+    expect(latestPeriodBefore("2026-08", known)).toBeNull();
+  });
+
+  it("is null for the very first month, with nothing to copy", () => {
+    expect(latestPeriodBefore("2026-11", [])).toBeNull();
+  });
+
+  it("does not care what order the known months arrive in", () => {
+    expect(latestPeriodBefore("2026-11", ["2026-10", "2025-01", "2026-08"])).toBe("2026-10");
   });
 });
 

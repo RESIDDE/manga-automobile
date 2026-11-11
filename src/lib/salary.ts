@@ -216,6 +216,21 @@ export function nextPeriod(key: string): string {
 }
 
 /**
+ * The most recent month before `target` that already has a sheet.
+ *
+ * Starting a new month copies from this rather than from `previousPeriod`,
+ * because a month can be skipped — a sheet typed up late, or an office that
+ * missed December. Keying strictly on "last month" would offer nothing at all
+ * in that case and send somebody back to typing fourteen rows by hand.
+ *
+ * Null when nothing precedes it, which is the genuinely first month.
+ */
+export function latestPeriodBefore(target: string, known: string[]): string | null {
+  const earlier = known.filter((k) => k < target).sort();
+  return earlier.length ? earlier[earlier.length - 1] : null;
+}
+
+/**
  * The months to offer in the picker: this month first, then back through the
  * year, plus any month that already has a sheet — including one typed ahead of
  * time, which would otherwise be impossible to reopen.
