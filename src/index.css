@@ -1,0 +1,245 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 210 40% 98%;
+    --foreground: 222 47% 11%;
+    --card: 0 0% 100%;
+    --card-foreground: 222 47% 11%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 222 47% 11%;
+    --primary: 230 100% 65%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 210 40% 96%;
+    --secondary-foreground: 222 47% 11%;
+    --muted: 210 40% 96%;
+    --muted-foreground: 215 16% 47%;
+    --accent: 210 40% 96%;
+    --accent-foreground: 222 47% 11%;
+    --destructive: 0 84% 60%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 214 32% 91%;
+    --input: 214 32% 91%;
+    --ring: 230 100% 65%;
+    --radius: 1rem;
+    --sidebar-background: 0 0% 100%;
+    --sidebar-foreground: 222 47% 11%;
+    --sidebar-primary: 230 100% 65%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 210 40% 96%;
+    --sidebar-accent-foreground: 222 47% 11%;
+    --sidebar-border: 214 32% 91%;
+    --sidebar-ring: 230 100% 65%;
+    --gradient-start: 230 100% 65%;
+    --gradient-end: 280 100% 65%;
+    --success: 142 76% 36%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+  }
+
+  /* Tuned to the dashboard bento: black canvas, lime accent, hairline borders. */
+  .dark {
+    --background: 0 0% 0%;
+    --foreground: 0 0% 100%;
+    --card: 0 0% 7%;
+    --card-foreground: 0 0% 100%;
+    --popover: 240 6% 7%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 66 100% 56%;
+    --primary-foreground: 240 6% 5%;
+    --secondary: 0 0% 12%;
+    --secondary-foreground: 0 0% 100%;
+    --muted: 0 0% 12%;
+    --muted-foreground: 0 0% 56%;
+    --accent: 0 0% 14%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 0 0% 16%;
+    --input: 0 0% 16%;
+    --ring: 66 100% 56%;
+    --sidebar-background: 0 0% 7%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-primary: 66 100% 56%;
+    --sidebar-primary-foreground: 240 6% 5%;
+    --sidebar-accent: 0 0% 14%;
+    --sidebar-accent-foreground: 0 0% 100%;
+    --sidebar-border: 0 0% 16%;
+    --sidebar-ring: 66 100% 56%;
+    --gradient-start: 66 100% 56%;
+    --gradient-end: 86 90% 52%;
+    --success: 142 70% 45%;
+    --success-foreground: 240 6% 5%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 240 6% 5%;
+  }
+}
+
+/* ─── Login screen accent ───────────────────────────────────────────────────
+   The dashboard's lime (--primary: 66 100% 56%) was too loud behind the sign-in
+   form, where it fills the page as two large blurred glows. Scoped to this page
+   only: half the saturation and roughly half the lightness, giving a darker,
+   calmer green. Everything on the page — the glows, the logo tile, the button,
+   the focus rings — follows --primary, so this one override moves all of it.
+   At this lightness the white button text clears 4.5:1 contrast. */
+.dark .auth-screen {
+  --primary: 66 50% 30%;
+  --ring: 66 50% 30%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased selection:bg-primary/20 selection:text-primary font-sans;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading tracking-tight;
+  }
+}
+
+@layer components {
+  .glass-card {
+    @apply bg-card/60 backdrop-blur-xl border border-white/10 dark:border-white/5 shadow-xl shadow-black/5 dark:shadow-black/40 rounded-2xl transition-all duration-300;
+  }
+  
+  .glass-card:hover {
+    @apply border-primary/30 dark:border-primary/40 shadow-2xl;
+  }
+
+  .bento-card {
+    @apply relative overflow-hidden rounded-3xl border border-white/20 dark:border-white/10 bg-gradient-to-br from-card/80 to-card/40 backdrop-blur-2xl shadow-xl transition-all duration-300 hover:shadow-2xl hover:border-primary/30;
+  }
+
+  .glass-panel {
+    @apply bg-card/40 backdrop-blur-md border border-white/10 dark:border-white/5 shadow-sm rounded-2xl;
+  }
+
+  .gradient-primary {
+    background: linear-gradient(135deg, hsl(var(--gradient-start)), hsl(var(--gradient-end)));
+  }
+
+  .stat-card {
+    @apply relative overflow-hidden rounded-2xl p-6 transition-all duration-300 hover:scale-[1.02] shadow-sm glass-card border-none;
+    background: linear-gradient(180deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0) 100%);
+  }
+
+  .stat-card::before {
+    content: '';
+    @apply absolute inset-0 bg-gradient-to-br from-primary/10 to-transparent opacity-0 transition-opacity duration-300;
+  }
+  
+  .stat-card:hover::before {
+    @apply opacity-100;
+  }
+}
+
+/* ─── Printable A4 documents ───────────────────────────────────────────────── */
+/* One sheet of A4, white, black text. The same element is what previews on
+   screen, what prints, and what gets rasterised into a PDF/PNG/JPEG. */
+.print-pages-container {
+  --doc-zoom: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.5rem;
+}
+
+.print-document-page {
+  background: #ffffff;
+  color: #000000;
+  width: 100%;
+  box-shadow: 0 20px 60px -20px rgb(0 0 0 / 0.45);
+  position: relative;
+  overflow: hidden;
+}
+
+/* On small screens scale the sheet down instead of letting it overflow sideways */
+@media (max-width: 839px) {
+  .print-pages-container {
+    --doc-zoom: 0.92;
+  }
+  .print-document-page {
+    zoom: var(--doc-zoom);
+  }
+}
+
+@media print {
+  .print-document-page {
+    zoom: var(--print-zoom, 1);
+    box-shadow: none !important;
+    width: 210mm !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .print-pages-container {
+    display: block !important;
+    gap: 0 !important;
+  }
+}
+
+@media print {
+  /* Reset layout for physical paper */
+  body, html {
+    height: auto !important;
+    overflow: visible !important;
+    background: white !important;
+  }
+
+  /* Unset the screen-locking heights we added for the app UI */
+  .h-screen {
+    height: auto !important;
+  }
+
+  /* Ensure the main content container expands fully */
+  main {
+    overflow: visible !important;
+    height: auto !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    display: block !important;
+  }
+
+  /* Hide the app shell UI during print */
+  header, 
+  aside,
+  .sidebar-trigger,
+  [data-sidebar="sidebar"],
+  .sidebar-provider {
+    display: none !important;
+  }
+
+  /* Remove rounding and borders from the layout wrapper during print */
+  .flex-1.flex-col {
+    all: unset !important;
+    display: block !important;
+  }
+
+  /* Page breaks and sizing */
+  @page {
+    margin: 0;
+    size: auto;
+  }
+
+  /* App chrome never prints */
+  .print\:hidden,
+  [data-sidebar],
+  nav[aria-label="Main"] {
+    display: none !important;
+  }
+
+  /* Force signatures and images to print colors if needed */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+}
+
