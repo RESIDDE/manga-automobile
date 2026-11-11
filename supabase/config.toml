@@ -1,1 +1,6 @@
 project_id = "fxpkkrpnyecqlxbvekpb"
+
+[functions.vin-reader]
+# The function checks for a signed-in user itself: the public anon key is also a
+# valid JWT, so the gateway check alone would let anyone with the site call it.
+verify_jwt = false

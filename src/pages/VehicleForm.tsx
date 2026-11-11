@@ -34,6 +34,8 @@ import { isMissingSchema, omitKeys, warnOnce } from "@/lib/dbCompat";
 import { INVENTORY_EXTERNAL, isExternal } from "@/lib/inventoryType";
 import { isStandardMarkup, marginOf, markupLabel, officeFollowsActual, officePriceFor } from "@/lib/officePrice";
 import { formatNaira } from "@/lib/numberToWords";
+import { VinScanner } from "@/components/VinScanner";
+import { applyVinResult, describeFilled, type VinReadResult } from "@/lib/vinReader";
 
 interface FormData {
   make: string;
@@ -377,6 +379,29 @@ export default function VehicleForm() {
     setExistingImages((prev) => prev.filter((img) => img.id !== imgId));
   };
 
+  // The VIN reader answers seconds after it was started; apply its result to the
+  // form as it is then, not as it was when the photo was chosen.
+  const formRef = useRef(form);
+  formRef.current = form;
+
+  const applyVin = (result: VinReadResult) => {
+    const { next, previous, filled } = applyVinResult(formRef.current, result);
+    if (filled.length === 0) {
+      if (result.warnings.length === 0) toast.info("The form already matches this VIN.");
+      return;
+    }
+    setForm(next);
+    setErrors((prev) => {
+      const rest = { ...prev };
+      filled.forEach((k) => delete rest[k]);
+      return rest;
+    });
+    toast.success(`Filled ${describeFilled(filled)}`, {
+      description: "Check the details before saving.",
+      action: { label: "Undo", onClick: () => setForm((cur) => ({ ...cur, ...previous })) },
+    });
+  };
+
   const field = (
     key: keyof FormData,
     label: string,
@@ -421,6 +446,7 @@ export default function VehicleForm() {
             <CardTitle>Vehicle Details</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
+            <VinScanner vin={form.vin} onResult={applyVin} className="md:col-span-2" />
             <VehicleMakeModelSelector
               make={form.make}
               model={form.model}
