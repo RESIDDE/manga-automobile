@@ -24,7 +24,7 @@ import {
 import {
   Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious,
 } from "@/components/ui/pagination";
-import { PlusCircle, Pencil, Trash2, Receipt, Download, Eye, FileText, Printer, DollarSign, Calendar, Search, Car, Users, QrCode, CheckCircle, AlertCircle } from "lucide-react";
+import { PlusCircle, Pencil, Trash2, Receipt, Download, Eye, FileText, Printer, DollarSign, Calendar, Search, Car, Users, QrCode, CheckCircle, AlertCircle, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
 import { exportToCSV, exportToJSON, printTable, downloadTableAsPDF } from "@/lib/exportHelpers";
 import { useAuth } from "@/hooks/useAuth";
@@ -64,6 +64,8 @@ import { createRoot } from "react-dom/client";
 import {
   SaleReceiptDocument, type ReceiptLineItem, type ReceiptBankDetails,
 } from "@/components/SaleReceiptDocument";
+import { PrintSheet } from "@/components/PrintSheet";
+import { RecordActions } from "@/components/RecordActions";
 import { DocumentToolbar } from "@/components/DocumentToolbar";
 import { downloadDocument, type DocFormat } from "@/lib/documentExport";
 import { firstWorkingSelect, warnOnce, withSchemaFallback } from "@/lib/dbCompat";
@@ -1040,18 +1042,16 @@ export default function Sales() {
           accentClass="bg-violet-500 hover:bg-violet-600 shadow-violet-500/20"
           onBack={() => setReceiptSale(null)}
         />
-        <div className="print-pages-container">
-          <div ref={receiptDocRef}>
-            <SaleReceiptDocument
-              sale={live}
-              customer={customerObjMap[live.customer_id] ?? {}}
-              items={receiptItems(live)}
-              payment={payment}
-              paymentIndex={paymentIndex}
-              bank={bankDetails}
-            />
-          </div>
-        </div>
+        <PrintSheet ref={receiptDocRef}>
+          <SaleReceiptDocument
+            sale={live}
+            customer={customerObjMap[live.customer_id] ?? {}}
+            items={receiptItems(live)}
+            payment={payment}
+            paymentIndex={paymentIndex}
+            bank={bankDetails}
+          />
+        </PrintSheet>
       </div>
     );
   }
@@ -1452,98 +1452,139 @@ export default function Sales() {
         </div>
       ) : (
         <div className="space-y-6">
-          <div className="bento-card overflow-hidden">
-            <div className="overflow-x-auto w-full">
-              <div className="min-w-[800px]">
-                <Table className="w-full">
-                <TableHeader className="bg-foreground/5 pointer-events-none">
-                  <TableRow className="border-border/50 hover:bg-transparent">
-                    <TableHead className="font-semibold px-6 py-4">Sale #</TableHead>
-                    <TableHead className="font-semibold">Vehicle</TableHead>
-                    <TableHead className="font-semibold">Customer</TableHead>
-                    <TableHead className="font-semibold">Sale Price</TableHead>
-                    <TableHead className="font-semibold">Sale Date</TableHead>
-                    <TableHead className="text-right font-semibold px-6">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {paged.map((s) => (
-                    <TableRow key={s.id} className="border-border/10 hover:bg-white/5 transition-colors group">
-                      <TableCell className="px-6 py-4">
-                        <span className="font-mono text-xs font-bold text-violet-500 bg-violet-500/5 px-2 py-1 rounded">№ {(s as any).sale_number ? (s as any).sale_number.padStart(5, '0') : s.id.slice(0, 5).toUpperCase()}</span>
-                      </TableCell>
-                      <TableCell>
-                         <div className="flex items-center gap-2">
-                            <Car className="h-4 w-4 text-muted-foreground" />
-                            <span className="font-semibold text-sm transition-colors group-hover:text-violet-500">{vehicleMap[s.vehicle_id] || "—"}</span>
-                         </div>
-                      </TableCell>
-                      <TableCell>
-                         <div className="flex items-center gap-2">
-                            <Users className="h-4 w-4 text-muted-foreground" />
-                            <span className="text-sm">{customerMap[s.customer_id] || "—"}</span>
-                         </div>
-                      </TableCell>
-                      <TableCell>
-                        {(() => {
-                          // Derived from the instalments, never from payment_status alone
-                          const state = derivePaymentState(s as any);
-                          return (
-                            <div className="flex flex-col leading-tight">
-                              <span className="font-semibold">{formatNaira(state.total)}</span>
-                              <span className={`text-[10px] font-bold uppercase tracking-wider ${state.isPaidInFull ? "text-emerald-500" : "text-amber-500"}`}>
-                                {state.isPaidInFull
-                                  ? "Paid in full"
-                                  : `${formatNaira(state.balance)} due`}
-                              </span>
-                            </div>
-                          );
-                        })()}
-                      </TableCell>
-                      <TableCell className="text-muted-foreground text-sm flex items-center gap-2"><Calendar className="h-3.5 w-3.5" /> {new Date(s.sale_date).toLocaleDateString()}</TableCell>
-                      <TableCell className="text-right px-6">
-                        <div className="flex justify-end gap-1 opacity-50 group-hover:opacity-100 transition-opacity">
-                          <Button variant="ghost" size="sm" className="h-8 rounded-lg hover:bg-foreground/20 text-emerald-500" onClick={() => { setPaymentsSale(s); setNewPayment({ amount: "", method: "cash", notes: "" }); }}>
-                            <DollarSign className="h-4 w-4 mr-1.5" /> Payments
-                          </Button>
-                          <Button variant="ghost" size="sm" className="h-8 rounded-lg hover:bg-foreground/20 text-amber-500" onClick={() => setQrId(s.id)}>
-                            <QrCode className="h-4 w-4 mr-1.5" /> Sign Link
-                          </Button>
-                          <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                              <Button variant="ghost" size="sm" className="h-8 rounded-lg hover:bg-foreground/20 text-sky-500">
-                                <Download className="h-4 w-4 mr-1.5" /> Download
-                              </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent className="rounded-xl glass-panel p-2 shadow-2xl border-white/10">
-                              <DropdownMenuItem onClick={() => handleDownloadPDF(s)} className="rounded-lg cursor-pointer">
-                                <FileText className="mr-2 h-4 w-4 text-violet-500" /> Download PDF (Direct)
-                              </DropdownMenuItem>
-                              <DropdownMenuItem onClick={() => handleDownloadPNG(s)} className="rounded-lg cursor-pointer">
-                                <Download className="mr-2 h-4 w-4" /> Download as PNG
-                              </DropdownMenuItem>
-                            </DropdownMenuContent>
-                          </DropdownMenu>
-                          <Button variant="ghost" size="sm" className="h-8 rounded-lg hover:bg-foreground/20" onClick={() => printReceipt(s)}>
-                            <Receipt className="h-4 w-4 mr-1.5" /> Receipt
-                          </Button>
-                          {hasEdit && (
-                            <Button variant="ghost" size="icon" aria-label="Edit sale" onClick={() => openEdit(s)} className="h-8 w-8 rounded-lg hover:bg-foreground/20">
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                          )}
-                          {hasDelete && (
-                            <Button variant="ghost" size="icon" aria-label="Delete sale" onClick={() => setDeleteId(s.id)} className="h-8 w-8 rounded-lg hover:bg-destructive/20 hover:text-destructive">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
+          {/*
+            One card per sale, rather than the eight-column table this used to
+            be. The table needed 800px before it could show a single row, so on
+            anything but a desktop the office was scrolling sideways to find the
+            buttons — which were themselves six equal-weight items in a row at
+            half opacity until you hovered.
+
+            The card puts the three things anyone actually reads first — what
+            was sold, for how much, and whether it is paid — then gives the two
+            everyday actions a solid button each and folds the rest into one
+            menu.
+          */}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {paged.map((s) => {
+              // Derived from the instalments, never from payment_status alone
+              const state = derivePaymentState(s as any);
+              const paidPct = state.total > 0
+                ? Math.min(100, (state.totalPaid / state.total) * 100)
+                : 0;
+              const saleNo = (s as any).sale_number
+                ? String((s as any).sale_number).padStart(5, "0")
+                : s.id.slice(0, 5).toUpperCase();
+
+              return (
+                <div
+                  key={s.id}
+                  className="bento-card p-5 flex flex-col gap-4 transition-colors hover:border-violet-500/30"
+                >
+                  {/* Serial and status: the two things that identify the row */}
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="font-mono text-[11px] font-bold text-violet-500 bg-violet-500/10 px-2 py-1 rounded-md">
+                      № {saleNo}
+                    </span>
+                    <span
+                      className={`text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-md ${
+                        state.isPaidInFull
+                          ? "bg-emerald-500/10 text-emerald-500"
+                          : "bg-amber-500/10 text-amber-500"
+                      }`}
+                    >
+                      {state.isPaidInFull ? "Paid in full" : "Part paid"}
+                    </span>
+                  </div>
+
+                  {/* What was sold, and to whom */}
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Car className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <p className="font-bold text-sm truncate">
+                        {vehicleMap[s.vehicle_id] || "—"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5 min-w-0">
+                      <Users className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <p className="text-xs text-muted-foreground truncate">
+                        {customerMap[s.customer_id] || "—"}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5">
+                      <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <p className="text-xs text-muted-foreground">
+                        {new Date(s.sale_date).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* The money, with the balance shown as progress when part paid */}
+                  <div>
+                    <p className="text-2xl font-bold tabular-nums leading-none">
+                      {formatNaira(state.total)}
+                    </p>
+                    {state.isPaidInFull ? (
+                      <p className="text-[11px] text-emerald-500 font-semibold mt-1.5">
+                        Fully settled
+                      </p>
+                    ) : (
+                      <>
+                        <div className="h-1.5 w-full rounded-full bg-foreground/10 mt-2.5 overflow-hidden">
+                          <div
+                            className="h-full rounded-full bg-amber-500 transition-all"
+                            style={{ width: `${paidPct}%` }}
+                          />
                         </div>
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+                        <p className="text-[11px] text-muted-foreground mt-1.5">
+                          <span className="font-semibold text-foreground">
+                            {formatNaira(state.totalPaid)}
+                          </span>{" "}
+                          paid ·{" "}
+                          <span className="font-semibold text-amber-500">
+                            {formatNaira(state.balance)}
+                          </span>{" "}
+                          due
+                        </p>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Actions: the two used daily, then everything else in one menu */}
+                  <RecordActions
+                    menuLabel={`More actions for sale ${saleNo}`}
+                    primary={[
+                      { label: "Receipt", icon: Receipt, onClick: () => printReceipt(s) },
+                      {
+                        label: "Payments", icon: DollarSign, tone: "text-emerald-500",
+                        onClick: () => {
+                          setPaymentsSale(s);
+                          setNewPayment({ amount: "", method: "cash", notes: "" });
+                        },
+                      },
+                    ]}
+                    menu={[
+                      {
+                        label: "Sign link", icon: QrCode, tone: "text-amber-500",
+                        onClick: () => setQrId(s.id),
+                      },
+                      {
+                        label: "Download PDF", icon: FileText, tone: "text-violet-500",
+                        onClick: () => handleDownloadPDF(s),
+                      },
+                      {
+                        label: "Download PNG", icon: Download, tone: "text-sky-500",
+                        onClick: () => handleDownloadPNG(s),
+                      },
+                      { label: "Edit sale", icon: Pencil, onClick: () => openEdit(s), show: hasEdit },
+                      {
+                        label: "Delete sale", icon: Trash2, destructive: true, show: hasDelete,
+                        onClick: () => setDeleteId(s.id),
+                      },
+                    ]}
+                  />
+                </div>
+              );
+            })}
           </div>
 
           {/* Pagination */}
@@ -1584,8 +1625,7 @@ export default function Sales() {
             </div>
           )}
         </div>
-      </div>
-    )}
+      )}
 
     {/* Add/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={(open) => { if (!open) closeDialog(); }}>

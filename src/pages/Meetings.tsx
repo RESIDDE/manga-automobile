@@ -28,6 +28,7 @@ import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
 import { canCreate, canDelete, canEdit } from "@/lib/permissions";
 import { CustomPagination } from "@/components/CustomPagination";
+import { RecordActions } from "@/components/RecordActions";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip as RechartsTooltip } from "recharts";
@@ -323,100 +324,104 @@ export default function Meetings() {
           <p className="text-muted-foreground font-medium">No meeting requests found.</p>
         </div>
       ) : (
-        <div className="bento-card overflow-hidden">
-          <Table>
-            <TableHeader className="bg-foreground/5">
-              <TableRow className="border-white/5">
-                <TableHead className="px-6 py-4 font-bold text-xs uppercase tracking-widest text-muted-foreground">Applicant</TableHead>
-                <TableHead className="py-4 font-bold text-xs uppercase tracking-widest text-muted-foreground">Meeting Intent</TableHead>
-                <TableHead className="py-4 font-bold text-xs uppercase tracking-widest text-muted-foreground">Requested Date</TableHead>
-                <TableHead className="py-4 font-bold text-xs uppercase tracking-widest text-muted-foreground">Proposal</TableHead>
-                <TableHead className="py-4 font-bold text-xs uppercase tracking-widest text-muted-foreground">Status</TableHead>
-                <TableHead className="text-right px-6 py-4"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {paged.map((m) => (
-                <TableRow key={m.id} className="border-white/5 group hover:bg-white/[0.02] transition-colors">
-                  <TableCell className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                       <div className="h-9 w-9 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 text-xs font-black">
-                         {(m.full_name || "?").charAt(0)}
-                       </div>
-                       <div>
-                         <p className="font-bold text-sm leading-none mb-1 group-hover:text-amber-500 transition-colors">{m.full_name || "Unknown"}</p>
-                         <p className="text-[10px] text-muted-foreground font-medium uppercase truncate max-w-[120px]">
-                           {m.contact_info?.includes('|') 
-                             ? m.contact_info.split('|')[0].replace('Phone:', '').trim() 
-                             : "No phone"}
-                         </p>
-                       </div>
+        <div className="space-y-4">
+          {/*
+            A card per request rather than a six-column table. The old row put
+            the applicant, the intent, the date, the proposal, the status and
+            the actions side by side, which only fitted on a desktop — and the
+            actions were a ghost "View" beside a muted bin icon.
+          */}
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+            {paged.map((m) => {
+              const phone = m.contact_info?.includes("|")
+                ? m.contact_info.split("|")[0].replace("Phone:", "").trim()
+                : null;
+              const when = getSafeDate(m.booking_date);
+
+              return (
+                <div
+                  key={m.id}
+                  className="bento-card p-5 flex flex-col gap-4 transition-colors hover:border-amber-500/30"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="h-9 w-9 shrink-0 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500 text-xs font-black">
+                        {(m.full_name || "?").charAt(0)}
+                      </div>
+                      <div className="min-w-0">
+                        <p className="font-bold text-sm truncate">{m.full_name || "Unknown"}</p>
+                        <p className="text-[11px] text-muted-foreground truncate">
+                          {phone || "No phone"}
+                        </p>
+                      </div>
                     </div>
-                  </TableCell>
-                  <TableCell className="max-w-[180px] truncate">
-                     <p className="text-sm font-medium">{m.intent}</p>
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex flex-col">
-                       <span className="text-sm font-bold">
-                         {getSafeDate(m.booking_date) ? format(new Date(m.booking_date), "MMM dd, yyyy") : "Invalid Date"}
-                       </span>
-                       {getSafeDate(m.booking_date) && (
-                         <span className="text-[10px] text-muted-foreground font-semibold">{format(new Date(m.booking_date), "p")}</span>
-                       )}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    {m.proposal_url ? (
-                      <Button variant="ghost" size="sm" onClick={() => getProposalDownloadUrl(m.proposal_url)} className="text-amber-500 hover:text-amber-400 hover:bg-amber-500/10 px-2 rounded-lg font-bold text-xs">
-                        <Download className="h-3.5 w-3.5 mr-1.5" /> PDF/DOCX
-                      </Button>
-                    ) : (
-                      <span className="text-xs text-muted-foreground italic">None</span>
-                    )}
-                  </TableCell>
-                  <TableCell>
                     <span className={cn(
-                      "inline-flex items-center px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider",
-                      m.status === 'Pending' ? "bg-amber-500/10 text-amber-500 border border-amber-500/20" :
-                      m.status === 'Approved' ? "bg-emerald-500/10 text-emerald-500 border border-emerald-500/20" :
-                      m.status === 'Rejected' ? "bg-red-500/10 text-red-500 border border-red-500/20" :
-                      "bg-blue-500/10 text-blue-500 border border-blue-500/20"
+                      "shrink-0 inline-flex items-center px-2 py-1 rounded-md text-[10px] font-bold uppercase tracking-wider",
+                      m.status === "Pending" ? "bg-amber-500/10 text-amber-500" :
+                      m.status === "Approved" ? "bg-emerald-500/10 text-emerald-500" :
+                      m.status === "Rejected" ? "bg-red-500/10 text-red-500" :
+                      "bg-blue-500/10 text-blue-500"
                     )}>
                       {m.status}
                     </span>
-                  </TableCell>
-                  <TableCell className="text-right px-6">
-                    <div className="flex justify-end gap-2">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        onClick={() => setSelectedId(m.id)} 
-                        className="rounded-xl font-bold gap-2 text-amber-500 hover:text-amber-500 hover:bg-amber-500/10"
-                      >
-                         <Eye className="h-4 w-4" /> View
-                      </Button>
-                      {hasDelete && (
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          aria-label="Delete meeting"
-                          onClick={() => {
-                            if (confirm("Are you sure you want to delete this record?")) {
-                              deleteMutation.mutate(m.id);
-                            }
-                          }}
-                          className="h-9 w-9 rounded-xl text-muted-foreground hover:text-red-500 hover:bg-red-500/10"
-                        >
-                           <Trash2 className="h-4 w-4" />
-                        </Button>
+                  </div>
+
+                  <div className="min-w-0">
+                    <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mb-1">
+                      Meeting intent
+                    </p>
+                    <p className="text-sm line-clamp-2">{m.intent || "—"}</p>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Calendar className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                    <p className="text-xs">
+                      {when ? (
+                        <>
+                          <span className="font-semibold">
+                            {format(new Date(m.booking_date), "MMM dd, yyyy")}
+                          </span>
+                          <span className="text-muted-foreground">
+                            {" · "}{format(new Date(m.booking_date), "p")}
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-muted-foreground italic">No valid date</span>
                       )}
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+                    </p>
+                  </div>
+
+                  {m.proposal_url && (
+                    <p className="text-[11px] text-amber-500 font-semibold">
+                      Proposal attached
+                    </p>
+                  )}
+
+                  <RecordActions
+                    menuLabel={`More actions for ${m.full_name || "this request"}`}
+                    primary={[
+                      { label: "View request", icon: Eye, onClick: () => setSelectedId(m.id) },
+                    ]}
+                    menu={[
+                      {
+                        label: "Download proposal", icon: Download,
+                        onClick: () => getProposalDownloadUrl(m.proposal_url),
+                        show: !!m.proposal_url,
+                      },
+                      {
+                        label: "Delete request", icon: Trash2, destructive: true, show: hasDelete,
+                        onClick: () => {
+                          if (confirm("Are you sure you want to delete this record?")) {
+                            deleteMutation.mutate(m.id);
+                          }
+                        },
+                      },
+                    ]}
+                  />
+                </div>
+              );
+            })}
+          </div>
 
           <div className="p-4 border-t border-white/5">
             <CustomPagination

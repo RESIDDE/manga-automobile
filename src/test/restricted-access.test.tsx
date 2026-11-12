@@ -153,7 +153,7 @@ describe("the sidebar shows only what the role can open", () => {
   });
 
   it("keeps a group whose child they can open, even without the parent page", async () => {
-    // Documents is keyed on authority-to-sell; this role has only the proforma
+    // Documents is keyed on sales-agreement; this role has only the proforma
     // invoice, and used to lose the whole group along with it.
     matrix.current = {
       sales: { view: ["sales", "performance-quotes"], create: [], edit: [], delete: [] },

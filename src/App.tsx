@@ -31,12 +31,13 @@ const SourceCompany = lazy(() => import("./pages/SourceCompany"));
 const Sources = lazy(() => import("./pages/Sources"));
 const Customers = lazy(() => import("./pages/Customers"));
 const Sales = lazy(() => import("./pages/Sales"));
-const AuthorityToSell = lazy(() => import("./pages/AuthorityToSell"));
+const ConsignmentAgreement = lazy(() => import("./pages/ConsignmentAgreement"));
 const SalesAgreement = lazy(() => import("./pages/SalesAgreement"));
 const ProformaInvoice = lazy(() => import("./pages/ProformaInvoice"));
 const Meetings = lazy(() => import("./pages/Meetings"));
 const PropertyIntake = lazy(() => import("./pages/PropertyIntake"));
 const SalarySchedule = lazy(() => import("./pages/SalarySchedule"));
+const Expenses = lazy(() => import("./pages/Expenses"));
 const Settings = lazy(() => import("./pages/Settings"));
 const PublicBooking = lazy(() => import("./pages/PublicBooking"));
 const SignCustomer = lazy(() => import("./pages/SignCustomer"));
@@ -110,12 +111,13 @@ function AppRoutes() {
             <Route path="/outside-vehicles"  element={<RoleGuard page="outside-vehicles"><OutsideVehicles /></RoleGuard>} />
             <Route path="/customers"         element={<RoleGuard page="customers"><Customers /></RoleGuard>} />
             <Route path="/sales"             element={<RoleGuard page="sales"><Sales /></RoleGuard>} />
-            <Route path="/authority-to-sell" element={<RoleGuard page="authority-to-sell"><AuthorityToSell /></RoleGuard>} />
-            <Route path="/sales-agreement"   element={<RoleGuard page="authority-to-sell"><SalesAgreement /></RoleGuard>} />
+            <Route path="/consignment-agreement" element={<RoleGuard page="sales"><ConsignmentAgreement /></RoleGuard>} />
+            <Route path="/sales-agreement"   element={<RoleGuard page="sales-agreement"><SalesAgreement /></RoleGuard>} />
             <Route path="/performance-quotes" element={<RoleGuard page="performance-quotes"><ProformaInvoice /></RoleGuard>} />
             <Route path="/meetings"          element={<RoleGuard page="meetings"><Meetings /></RoleGuard>} />
             <Route path="/property-intake"   element={<RoleGuard page="property-intake"><PropertyIntake /></RoleGuard>} />
             <Route path="/salary-schedule"   element={<RoleGuard page="salary"><SalarySchedule /></RoleGuard>} />
+            <Route path="/expenses"          element={<RoleGuard page="expenses"><Expenses /></RoleGuard>} />
             <Route path="/settings"          element={<AdminGuard><Settings /></AdminGuard>} />
             <Route path="/no-access"         element={<Unauthorized />} />
             <Route path="/unauthorized"      element={<Unauthorized />} />

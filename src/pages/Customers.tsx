@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { CustomerMatchHint } from "@/components/CustomerMatchHint";
 import { Button } from "@/components/ui/button";
+import { RecordActions } from "@/components/RecordActions";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
@@ -235,20 +236,19 @@ export default function Customers() {
                   </div>
                 </div>
 
-                {(hasEdit || hasDelete) && (
-                  <div className="flex gap-2 mt-6 pt-4 border-t border-white/5 justify-end">
-                    {hasEdit && (
-                      <Button variant="ghost" size="sm" className="h-8 rounded-lg hover:bg-foreground/10 hover:text-foreground text-muted-foreground transition-all" onClick={() => openEdit(c)}>
-                        <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
-                      </Button>
-                    )}
-                    {hasDelete && (
-                      <Button variant="ghost" size="icon" aria-label="Delete customer" className="h-8 w-8 rounded-lg hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all" onClick={() => setDeleteId(c.id)}>
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
-                )}
+                <RecordActions
+                  className="mt-6"
+                  menuLabel={`More actions for ${c.name}`}
+                  primary={[
+                    { label: "Edit customer", icon: Pencil, onClick: () => openEdit(c), show: hasEdit },
+                  ]}
+                  menu={[
+                    {
+                      label: "Delete customer", icon: Trash2,
+                      onClick: () => setDeleteId(c.id), destructive: true, show: hasDelete,
+                    },
+                  ]}
+                />
               </div>
             ))}
           </div>

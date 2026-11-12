@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, within, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
@@ -77,15 +77,21 @@ describe("Sale signing link", () => {
     renderSignPage();
 
     expect(await screen.findByText("Please review and sign")).toBeInTheDocument();
+
+    // PrintSheet renders the document twice — once in the page, once into the
+    // print portal on <body> — so every assertion is scoped to the copy the
+    // customer actually sees.
+    const sheet = within(document.querySelector(".screen-only") as HTMLElement);
+
     // The document component's own heading and structure
-    expect(screen.getByText("Sales Receipt")).toBeInTheDocument();
-    expect(screen.getByText("Billed to")).toBeInTheDocument();
-    expect(screen.getByText("Amount in words")).toBeInTheDocument();
-    expect(screen.getAllByText("Balance due").length).toBeGreaterThan(0);
+    expect(sheet.getByText("Sales Receipt")).toBeInTheDocument();
+    expect(sheet.getByText("Billed to")).toBeInTheDocument();
+    expect(sheet.getByText("Amount in words")).toBeInTheDocument();
+    expect(sheet.getAllByText("Balance due").length).toBeGreaterThan(0);
 
     // Line item carries the vehicle with its VIN, trim and colour
-    expect(screen.getByText("2015 Lexus RX 350")).toBeInTheDocument();
-    expect(screen.getByText(/JN1AZ4EH4FM · F-Sport · Silver/)).toBeInTheDocument();
+    expect(sheet.getByText("2015 Lexus RX 350")).toBeInTheDocument();
+    expect(sheet.getByText(/JN1AZ4EH4FM · F-Sport · Silver/)).toBeInTheDocument();
 
     // It is the A4 sheet, so it matches what gets printed
     expect(document.querySelector(".print-document-page")).toBeTruthy();

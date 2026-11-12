@@ -27,6 +27,8 @@ import { CurrencyInput } from "@/components/CurrencyInput";
 import { CustomPagination } from "@/components/CustomPagination";
 import { CustomerMatchHint } from "@/components/CustomerMatchHint";
 import { DocumentToolbar } from "@/components/DocumentToolbar";
+import { RecordActions } from "@/components/RecordActions";
+import { PrintSheet } from "@/components/PrintSheet";
 import {
   COMPANY, MetaLabel, ModernLetterhead, PrintWatermark, MODERN_FONT, ROW_RULE, RULE,
 } from "@/components/PrintHeader";
@@ -83,6 +85,8 @@ const itemUnitPrice = (item: QuoteItem) => {
 
 type QuoteDoc = {
   id: string | null;
+  /** The invoice's serial — 001, 002, … assigned by the database on save. */
+  document_no: string | null;
   quote_date: string;
   status: string;
   customer: { name: string; phone: string; email: string; address: string };
@@ -105,7 +109,9 @@ const totalsOf = (items: QuoteItem[], vatPercentage: string) => {
 
 function ProformaDocument({ doc }: { doc: QuoteDoc }) {
   const { subtotal, vatPct, vat, total } = totalsOf(doc.items, doc.vat_percentage);
-  const docNumber = `PI-${(doc.id || "").slice(0, 8).toUpperCase() || "DRAFT"}`;
+  // The serial the database assigned. A quote being previewed before its first
+  // save has none yet, and says so rather than inventing one.
+  const docNumber = doc.document_no || "DRAFT";
   const onlyVehicle = doc.items.length === 1 ? doc.items[0] : null;
 
   return (
@@ -267,6 +273,8 @@ export default function ProformaInvoice() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [previewDoc, setPreviewDoc] = useState<QuoteDoc | null>(null);
+  /** The serial of the quote open in the editor, once it has one. */
+  const [editingDocumentNo, setEditingDocumentNo] = useState<string | null>(null);
   // True when Preview was opened mid-entry, so Back returns to the form
   const [previewFromEditor, setPreviewFromEditor] = useState(false);
 
@@ -399,6 +407,7 @@ export default function ProformaInvoice() {
 
   const resetEditor = () => {
     setEditingId(null);
+    setEditingDocumentNo(null);
     setUseExistingCustomer(true);
     setCustomerId("");
     setTypedCustomer({ name: "", phone: "", email: "", address: "" });
@@ -420,6 +429,7 @@ export default function ProformaInvoice() {
 
   const openEdit = (quote: any) => {
     setEditingId(quote.id);
+    setEditingDocumentNo(quote.document_no ?? null);
     setUseExistingCustomer(!!quote.customer_id);
     setCustomerId(quote.customer_id || "");
     setTypedCustomer({
@@ -507,6 +517,7 @@ export default function ProformaInvoice() {
     const chosen = useExistingCustomer ? customerById[customerId] : null;
     return {
       id,
+      document_no: editingDocumentNo,
       quote_date: quoteDate,
       status,
       customer: {
@@ -562,10 +573,11 @@ export default function ProformaInvoice() {
         const { data, error } = await supabase
           .from("performance_quotes")
           .insert(payload)
-          .select("id")
+          .select("id, document_no")
           .single();
         if (error) throw error;
         quoteId = data.id;
+        setEditingDocumentNo((data as any).document_no ?? null);
         await logAction("CREATE", ENTITY, quoteId, { subtotal, total });
       }
 
@@ -617,6 +629,7 @@ export default function ProformaInvoice() {
     const c = quote.customer_id ? customerById[quote.customer_id] : null;
     return {
       id: quote.id,
+      document_no: quote.document_no ?? null,
       quote_date: quote.quote_date,
       status: quote.status || "Draft",
       customer: {
@@ -652,6 +665,7 @@ export default function ProformaInvoice() {
       const name = (row.customer_id ? customerById[row.customer_id]?.name : row.customer_name) || "";
       const matchesSearch =
         !q ||
+        (row.document_no || "").toLowerCase().includes(q) ||
         name.toLowerCase().includes(q) ||
         (row.performance_quote_items || []).some((i: any) =>
           (i.vehicle_description || "").toLowerCase().includes(q)
@@ -679,7 +693,7 @@ export default function ProformaInvoice() {
       <div className="p-4 md:p-8 animate-fade-in">
         <DocumentToolbar
           documentRef={documentRef}
-          filename={`proforma-${(previewDoc.id || "draft").slice(0, 8)}`}
+          filename={`proforma-${previewDoc.document_no || "draft"}`}
           entity={ENTITY}
           recordId={previewDoc.id}
           backLabel={previewFromEditor ? "Back to Form" : "Back to Invoices"}
@@ -693,11 +707,9 @@ export default function ProformaInvoice() {
             }
           }}
         />
-        <div className="print-pages-container">
-          <div ref={documentRef}>
-            <ProformaDocument doc={previewDoc} />
-          </div>
-        </div>
+        <PrintSheet ref={documentRef}>
+          <ProformaDocument doc={previewDoc} />
+        </PrintSheet>
       </div>
     );
   }
@@ -740,7 +752,7 @@ export default function ProformaInvoice() {
         <div className="relative flex-1 min-w-0">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search customer or vehicle..."
+            placeholder="Search no., customer or vehicle..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(0); }}
             className="h-10 pl-9 rounded-xl bg-background/50 border-white/10"
@@ -806,6 +818,9 @@ export default function ProformaInvoice() {
               <div key={q.id} className="bento-card p-5 flex flex-col gap-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
+                    <p className="text-[10px] font-bold text-emerald-500 mb-0.5">
+                      No. {q.document_no || "—"}
+                    </p>
                     <p className="font-bold text-sm truncate">{name}</p>
                     <p className="text-xs text-muted-foreground">
                       {count} vehicle{count === 1 ? "" : "s"} · {shortDate(q.quote_date)}
@@ -823,25 +838,22 @@ export default function ProformaInvoice() {
                       : "Standard Quote"}
                   </p>
                 </div>
-                <div className="flex gap-1.5 pt-2 border-t border-white/5">
-                  <Button variant="outline" size="sm" onClick={() => { setPreviewFromEditor(false); setPreviewDoc(quoteToDoc(q)); }}
-                    className="h-8 text-xs rounded-lg border-white/10">
-                    <Eye className="h-3.5 w-3.5 mr-1.5" /> Preview
-                  </Button>
-                  {mayEdit && (
-                    <Button variant="outline" size="sm" onClick={() => openEdit(q)}
-                      className="h-8 text-xs rounded-lg border-white/10">
-                      <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
-                    </Button>
-                  )}
-                  {mayDelete && (
-                    <Button variant="ghost" size="icon" aria-label="Delete proforma invoice"
-                      onClick={() => setDeleteId(q.id)}
-                      className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10">
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  )}
-                </div>
+                <RecordActions
+                  menuLabel={`More actions for invoice ${q.document_no || name}`}
+                  primary={[
+                    {
+                      label: "Preview", icon: Eye,
+                      onClick: () => { setPreviewFromEditor(false); setPreviewDoc(quoteToDoc(q)); },
+                    },
+                    { label: "Edit", icon: Pencil, onClick: () => openEdit(q), show: mayEdit },
+                  ]}
+                  menu={[
+                    {
+                      label: "Delete invoice", icon: Trash2,
+                      onClick: () => setDeleteId(q.id), destructive: true, show: mayDelete,
+                    },
+                  ]}
+                />
               </div>
             );
           })}
@@ -852,7 +864,8 @@ export default function ProformaInvoice() {
             <Table>
               <TableHeader className="bg-foreground/5">
                 <TableRow className="border-border/50 hover:bg-transparent">
-                  <TableHead className="px-6 font-semibold">Customer</TableHead>
+                  <TableHead className="px-6 font-semibold">No.</TableHead>
+                  <TableHead className="font-semibold">Customer</TableHead>
                   <TableHead className="font-semibold">Vehicles</TableHead>
                   <TableHead className="font-semibold">Date</TableHead>
                   <TableHead className="font-semibold">Status</TableHead>
@@ -863,7 +876,10 @@ export default function ProformaInvoice() {
               <TableBody>
                 {paged.map((q) => (
                   <TableRow key={q.id} className="border-border/10 hover:bg-white/5">
-                    <TableCell className="px-6 font-semibold text-sm">
+                    <TableCell className="px-6 font-mono text-xs font-bold text-emerald-500">
+                      {q.document_no || "—"}
+                    </TableCell>
+                    <TableCell className="font-semibold text-sm">
                       {(q.customer_id ? customerById[q.customer_id]?.name : q.customer_name) || "—"}
                     </TableCell>
                     <TableCell className="text-sm">{(q.performance_quote_items || []).length}</TableCell>
@@ -875,26 +891,23 @@ export default function ProformaInvoice() {
                     </TableCell>
                     <TableCell className="text-sm font-bold">{formatNaira(q.total_amount)}</TableCell>
                     <TableCell className="text-right px-6">
-                      <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="icon" aria-label="Preview proforma invoice"
-                          onClick={() => { setPreviewFromEditor(false); setPreviewDoc(quoteToDoc(q)); }}
-                          className="h-8 w-8 rounded-lg hover:bg-emerald-500/10 hover:text-emerald-500">
-                          <Eye className="h-4 w-4" />
-                        </Button>
-                        {mayEdit && (
-                          <Button variant="ghost" size="icon" aria-label="Edit proforma invoice"
-                            onClick={() => openEdit(q)} className="h-8 w-8 rounded-lg hover:bg-foreground/10">
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                        )}
-                        {mayDelete && (
-                          <Button variant="ghost" size="icon" aria-label="Delete proforma invoice"
-                            onClick={() => setDeleteId(q.id)}
-                            className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10">
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
+                      <RecordActions
+                        inline
+                        menuLabel={`More actions for invoice ${q.document_no || q.id}`}
+                        primary={[
+                          {
+                            label: "Preview", icon: Eye,
+                            onClick: () => { setPreviewFromEditor(false); setPreviewDoc(quoteToDoc(q)); },
+                          },
+                        ]}
+                        menu={[
+                          { label: "Edit invoice", icon: Pencil, onClick: () => openEdit(q), show: mayEdit },
+                          {
+                            label: "Delete invoice", icon: Trash2, destructive: true,
+                            onClick: () => setDeleteId(q.id), show: mayDelete,
+                          },
+                        ]}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}

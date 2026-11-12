@@ -32,7 +32,7 @@ GRANT SELECT, INSERT, UPDATE, DELETE ON public.app_settings TO authenticated;
 INSERT INTO public.app_settings (key, value)
 VALUES (
   'permissions',
-  '{"sales":{"view":["dashboard","vehicles","customers","sales","meetings","property-intake","authority-to-sell","performance-quotes"],"create":["vehicles","customers","sales","property-intake","authority-to-sell","performance-quotes"],"edit":["vehicles","customers","sales","property-intake","authority-to-sell","performance-quotes"],"delete":[]},"mechanic":{"view":["dashboard","vehicles"],"create":[],"edit":["vehicles"],"delete":[]}}'
+  '{"sales":{"view":["dashboard","vehicles","customers","sales","meetings","property-intake","sales-agreement","performance-quotes"],"create":["vehicles","customers","sales","property-intake","sales-agreement","performance-quotes"],"edit":["vehicles","customers","sales","property-intake","sales-agreement","performance-quotes"],"delete":[]},"mechanic":{"view":["dashboard","vehicles"],"create":[],"edit":["vehicles"],"delete":[]}}'
 )
 ON CONFLICT (key) DO NOTHING;
 

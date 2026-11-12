@@ -12,7 +12,7 @@ type Props = {
   /** The A4 sheet to rasterise — the same node that previews and prints. */
   documentRef: React.RefObject<HTMLDivElement>;
   filename: string;
-  /** Audit entity name, e.g. "Authority to Sell". */
+  /** Audit entity name, e.g. "Sales Agreement". */
   entity: string;
   recordId?: string | null;
   onBack: () => void;

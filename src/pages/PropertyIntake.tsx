@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { CustomerMatchHint } from "@/components/CustomerMatchHint";
 import { CustomPagination } from "@/components/CustomPagination";
+import { RecordActions } from "@/components/RecordActions";
 import type { TablesInsert } from "@/integrations/supabase/types";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -1303,21 +1304,23 @@ export default function PropertyIntake() {
                                 : "—"}
                             </TableCell>
                             <TableCell className="text-right px-6">
-                              <div className="flex justify-end gap-2">
-                                <Button variant="ghost" size="icon" onClick={() => viewHistoryItem(item)} className="h-9 w-9 rounded-xl hover:bg-teal-500/20 hover:text-teal-500">
-                                  <Printer className="w-4 h-4" />
-                                </Button>
-                                {hasEdit && (
-                                  <Button variant="ghost" size="icon" aria-label="Edit form" onClick={() => handleEdit(item)} className="h-9 w-9 rounded-xl hover:bg-teal-500/20 hover:text-teal-500">
-                                    <Pencil className="w-4 h-4" />
-                                  </Button>
-                                )}
-                                {hasDelete && (
-                                  <Button variant="ghost" size="icon" aria-label="Delete form" onClick={() => deleteMutation.mutate(item.id)} className="h-9 w-9 rounded-xl hover:bg-destructive/20 hover:text-destructive">
-                                    <Trash2 className="w-4 h-4" />
-                                  </Button>
-                                )}
-                              </div>
+                              <RecordActions
+                                inline
+                                menuLabel={`More actions for form ${item.form_number ?? ""}`}
+                                primary={[
+                                  { label: "Open", icon: Printer, onClick: () => viewHistoryItem(item) },
+                                ]}
+                                menu={[
+                                  {
+                                    label: "Edit form", icon: Pencil,
+                                    onClick: () => handleEdit(item), show: hasEdit,
+                                  },
+                                  {
+                                    label: "Delete form", icon: Trash2, destructive: true,
+                                    onClick: () => deleteMutation.mutate(item.id), show: hasDelete,
+                                  },
+                                ]}
+                              />
                             </TableCell>
                           </TableRow>
                         ))

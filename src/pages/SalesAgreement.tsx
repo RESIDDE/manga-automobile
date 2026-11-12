@@ -28,6 +28,8 @@ import { CurrencyInput } from "@/components/CurrencyInput";
 import { CustomPagination } from "@/components/CustomPagination";
 import { CustomerMatchHint } from "@/components/CustomerMatchHint";
 import { DocumentToolbar } from "@/components/DocumentToolbar";
+import { RecordActions } from "@/components/RecordActions";
+import { PrintSheet } from "@/components/PrintSheet";
 import {
   COMPANY, DocField, DocSectionTitle, InlineRuled, ModernSignSlot, PrintHeader,
   PrintWatermark, MODERN_FONT, ROW_RULE, RULE,
@@ -36,22 +38,55 @@ import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
 import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { canCreate, canDelete, canEdit } from "@/lib/permissions";
+import { firstWorkingSelect, omitKeys, warnOnce, withSchemaFallback } from "@/lib/dbCompat";
 import { logAction } from "@/lib/logger";
-import { VIN_MAX_LENGTH } from "@/lib/constants";
+import { VIN_FULL_LENGTH } from "@/lib/constants";
 import { formatNaira, numberToWords } from "@/lib/numberToWords";
 import {
   ALL_TIME, ALL_WEEKS, longDate, matchesPeriod, monthOptions, shortDate, WEEK_OPTIONS,
 } from "@/lib/historyFilters";
 
-const PAGE_KEY = "authority-to-sell" as const; // shares the Auth. Form permission
+const PAGE_KEY = "sales-agreement" as const;
 const ENTITY = "Sales Agreement";
 
-const EMPTY_FORM = {
-  agreementDate: new Date().toISOString().split("T")[0],
-  sellerName: "",
-  sellerAddress: "",
-  sellerPhone: "",
+/**
+ * The columns 20261112100000_sales_agreement_paper_form.sql adds. Until that
+ * migration is applied the page still saves and still prints — it just leaves
+ * these blanks empty rather than refusing the whole statement.
+ */
+const PAPER_COLUMNS = [
+  "document_no", "seller_title", "buyer_title", "effective_date",
+  "new_owner_details", "seller_sign_date", "buyer_sign_date",
+  "seller_witness_date", "buyer_witness_date",
+];
+
+const PAPER_SELECT = PAPER_COLUMNS.join(", ");
+
+const today = () => new Date().toISOString().split("T")[0];
+
+/**
+ * The seller on this agreement is the dealership: Manga Automobiles sells the
+ * vehicle and the customer buys it, so the "This is to certify that I …" half
+ * of the form is always the company's own details.
+ *
+ * Pre-filled rather than hard-coded. The office sometimes signs a car over on
+ * an owner's behalf, and when it does the clerk types that owner in; the
+ * "Use Manga Automobiles" button puts the company back.
+ */
+const COMPANY_SELLER = {
+  sellerTitle: "",
+  sellerName: `${COMPANY.name} ${COMPANY.nameSuffix}`,
+  sellerAddress: COMPANY.addressLines.join(" ").replace(/,$/, ""),
+  sellerPhone: COMPANY.tel,
   sellerIdType: "",
+};
+
+const EMPTY_FORM = {
+  agreementDate: today(),
+  /** The serial pre-printed on the leaf of the book this is written on. */
+  documentNo: "",
+  ...COMPANY_SELLER,
+  buyerTitle: "",
   buyerName: "",
   buyerAddress: "",
   buyerPhone: "",
@@ -65,25 +100,39 @@ const EMPTY_FORM = {
   salePrice: "",
   paymentMethod: "",
   note: "",
+  /** "...with effect from today's date ____" */
+  effectiveDate: today(),
+  /** "...change the ownership to new owners name and address:" */
+  newOwnerDetails: "",
   sellerSignature: "",
+  sellerSignDate: today(),
   sellerWitnessName: "",
   sellerWitnessSignature: "",
+  sellerWitnessDate: "",
   buyerSignature: "",
+  buyerSignDate: today(),
   buyerWitnessName: "",
   buyerWitnessSignature: "",
+  buyerWitnessDate: "",
   repName: "",
   repSignature: "",
-  repSignatureDate: new Date().toISOString().split("T")[0],
+  repSignatureDate: today(),
 };
 
-type SAForm = typeof EMPTY_FORM;
+export type SAForm = typeof EMPTY_FORM;
+
+/** The blank form, exported for tests. */
+export const BLANK_AGREEMENT: SAForm = EMPTY_FORM;
 
 const rowToForm = (row: any): SAForm => ({
   agreementDate: row.agreement_date || "",
+  documentNo: row.document_no || "",
+  sellerTitle: row.seller_title || "",
   sellerName: row.seller_name || "",
   sellerAddress: row.seller_address || "",
   sellerPhone: row.seller_phone || "",
   sellerIdType: row.seller_id_type || "",
+  buyerTitle: row.buyer_title || "",
   buyerName: row.buyer_name || "",
   buyerAddress: row.buyer_address || "",
   buyerPhone: row.buyer_phone || "",
@@ -97,12 +146,18 @@ const rowToForm = (row: any): SAForm => ({
   salePrice: row.sale_price || "",
   paymentMethod: row.payment_method || "",
   note: row.note || "",
+  effectiveDate: row.effective_date || "",
+  newOwnerDetails: row.new_owner_details || "",
   sellerSignature: row.seller_signature || "",
+  sellerSignDate: row.seller_sign_date || "",
   sellerWitnessName: row.seller_witness_name || "",
   sellerWitnessSignature: row.seller_witness_signature || "",
+  sellerWitnessDate: row.seller_witness_date || "",
   buyerSignature: row.buyer_signature || "",
+  buyerSignDate: row.buyer_sign_date || "",
   buyerWitnessName: row.buyer_witness_name || "",
   buyerWitnessSignature: row.buyer_witness_signature || "",
+  buyerWitnessDate: row.buyer_witness_date || "",
   repName: row.rep_name || "",
   repSignature: row.rep_signature || "",
   repSignatureDate: row.rep_signature_date || "",
@@ -112,10 +167,111 @@ const SectionLabel = ({ children }: { children: React.ReactNode }) => (
   <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-500 mb-3">{children}</p>
 );
 
-// ─── The document ────────────────────────────────────────────────────────────
+/** The banner on the printed book is red, unlike the navy letterhead strip. */
+const BANNER_RED = "#e01f26";
 
-function AgreementDocument({ data }: { data: SAForm }) {
-  const price = parseFloat((data.salePrice || "0").replace(/,/g, "")) || 0;
+/**
+ * The body of the printed book is set in a serif face — only the letterhead and
+ * the red banner are sans. Matching it is most of what makes the output read as
+ * the same document rather than a re-typing of it.
+ */
+const PAPER_FONT = "'Times New Roman', Times, Georgia, serif";
+
+const TITLES = ["Alh.", "Mall.", "Mr.", "Mrs.", "Miss", "Dr.", "Engr.", "Chief"];
+
+/** "Mr." + "Musa Bello" → "Mr. Musa Bello", with neither half required. */
+const withTitle = (title?: string | null, name?: string | null) =>
+  [title, name].filter((part) => (part || "").trim()).join(" ").trim();
+
+/**
+ * The one description of the car that the paper form asks for twice — once as
+ * "sold my vehicle", once as "the said vehicle". Composed from the structured
+ * columns so history and search keep working on them.
+ */
+const vehicleDescription = (data: SAForm) =>
+  [data.vehicleMake, data.vehicleYearModel, data.vehicleColor]
+    .map((part) => (part || "").trim())
+    .filter(Boolean)
+    .join(" ");
+
+const naira = (value: string) => parseFloat((value || "0").replace(/,/g, "")) || 0;
+
+// ─── The document ────────────────────────────────────────────────────────────
+// A facsimile of the pre-printed MANGA AUTOMOBILES sales agreement book: the
+// same sentences, in the same order, on the same ruled lines. Anything the
+// office keeps on file but the paper does not carry (phone, ID, payment
+// method, notes) is deliberately absent here.
+
+/** A value sitting on a ruled line that runs to the right margin. */
+const Fill = ({
+  children,
+  grow = 1,
+}: {
+  children?: React.ReactNode;
+  grow?: number;
+}) => (
+  <span
+    className="min-w-0 px-1 pb-[1px] text-[12px] font-semibold text-black break-words"
+    style={{ borderBottom: RULE, flex: `${grow} 1 0%` }}
+  >
+    {children || " "}
+  </span>
+);
+
+/** One printed sentence: its fixed wording, then the blank it is written on. */
+const FormLine = ({
+  label,
+  value,
+  grow,
+}: {
+  label: string;
+  value?: React.ReactNode;
+  grow?: number;
+}) => (
+  <div className="flex items-end gap-1.5">
+    <span className="shrink-0 pb-[2px] text-[11.5px] leading-[1.3] text-black">{label}</span>
+    <Fill grow={grow}>{value}</Fill>
+  </div>
+);
+
+/** A labelled blank inside the signature block, e.g. "Witness Name: ______". */
+const SignLine = ({ label, value }: { label: string; value?: React.ReactNode }) => (
+  <div className="flex items-end gap-1.5">
+    <span className="shrink-0 pb-[2px] text-[10.5px] text-black">{label}</span>
+    <span
+      className="flex-1 min-w-0 px-1 pb-[1px] text-[10.5px] font-semibold text-black break-words"
+      style={{ borderBottom: RULE }}
+    >
+      {value || " "}
+    </span>
+  </div>
+);
+
+/** A drawn signature resting on its line, as on the paper. */
+const SignOnLine = ({
+  signature,
+  caption,
+}: {
+  signature?: string | null;
+  caption: string;
+}) => (
+  <div>
+    <div className="h-[46px] flex items-end justify-center pb-[2px]" style={{ borderBottom: RULE }}>
+      {signature ? (
+        <img src={signature} alt="" className="max-h-[42px] object-contain" style={{ filter: "brightness(0)" }} />
+      ) : null}
+    </div>
+    <p className="text-center text-[11.5px] text-black mt-[3px]">{caption}</p>
+  </div>
+);
+
+/** Exported so a test can assert the printed wording without a save. */
+export function AgreementDocument({ data }: { data: SAForm }) {
+  const price = naira(data.salePrice);
+  const kobo = Math.round((price - Math.floor(price)) * 100);
+  const seller = withTitle(data.sellerTitle, data.sellerName);
+  const buyer = withTitle(data.buyerTitle, data.buyerName);
+  const vehicle = vehicleDescription(data);
 
   return (
     <div
@@ -124,124 +280,121 @@ function AgreementDocument({ data }: { data: SAForm }) {
     >
       <PrintWatermark />
       <div className="relative z-10">
-        <PrintHeader />
+        {/* The serial is printed under the address, where the book puts it */}
+        <PrintHeader docNumber={data.documentNo} />
 
-        <div className="text-center mb-5">
-          <h1 className="text-[15.5px] font-black uppercase tracking-[0.1em] text-black underline underline-offset-4">
-            Vehicle Sales Agreement &amp; Change of Ownership
-          </h1>
-          <p className="text-[10.5px] font-semibold text-black mt-1">
-            Dated {longDate(data.agreementDate)}
-          </p>
-        </div>
-
-        <div className="grid grid-cols-2 gap-6 mb-5">
-          <section>
-            <DocSectionTitle>Seller's Information</DocSectionTitle>
-            <div className="space-y-[7px]">
-              <DocField label="Full Name" value={data.sellerName} />
-              <DocField label="Address" value={data.sellerAddress} />
-              <DocField label="Phone Number" value={data.sellerPhone} />
-              <DocField label="ID Type & Number" value={data.sellerIdType} />
-            </div>
-          </section>
-          <section>
-            <DocSectionTitle>Buyer's Information</DocSectionTitle>
-            <div className="space-y-[7px]">
-              <DocField label="Full Name" value={data.buyerName} />
-              <DocField label="Address" value={data.buyerAddress} />
-              <DocField label="Phone Number" value={data.buyerPhone} />
-              <DocField label="ID Type & Number" value={data.buyerIdType} />
-            </div>
-          </section>
-        </div>
-
-        <section className="mb-5">
-          <DocSectionTitle>Vehicle Details</DocSectionTitle>
-          <div className="grid grid-cols-2 gap-x-6 gap-y-[7px]">
-            <DocField label="Make / Brand" value={data.vehicleMake} />
-            <DocField label="Year Model" value={data.vehicleYearModel} />
-            <DocField label="Colour" value={data.vehicleColor} />
-            <DocField label="Plate Number" value={data.vehiclePlateNumber} />
-            <DocField label="Engine Number" value={data.vehicleEngineNumber} />
-            <DocField label="Chassis / VIN No." value={data.vehicleChassis} />
+        {/* The red banner sits at the left, on a rule that runs to the margin */}
+        <div className="flex items-end gap-0 mb-[14px]">
+          <div
+            className="shrink-0 px-3 py-[3.5px] skew-x-[-10deg]"
+            style={{ backgroundColor: BANNER_RED }}
+          >
+            <span className="inline-block skew-x-[10deg] text-[13.5px] font-black uppercase tracking-[0.04em] text-white">
+              Vehicle Sales Agreement
+            </span>
           </div>
-        </section>
+          <span className="flex-1" style={{ borderBottom: RULE }} />
+        </div>
 
-        <section className="mb-5">
-          <DocSectionTitle>Sale Details</DocSectionTitle>
-          <div className="space-y-[7px]">
-            <DocField label="Agreed Price" value={formatNaira(price)} />
-            <p
-              className="text-[10.5px] italic text-black pb-[2px]"
-              style={{ borderBottom: ROW_RULE }}
+        {/* ── The certificate ───────────────────────────────────────────── */}
+        <div className="space-y-[13px]" style={{ fontFamily: PAPER_FONT }}>
+          <FormLine label="This is to certify that I, Alh./Mall/Mr./Mrs." value={seller} grow={2} />
+          <FormLine label="Of" value={data.sellerAddress} />
+          <FormLine label="Here by agrees and sold my vehicle" value={vehicle} />
+          <FormLine label="Registration No" value={data.vehiclePlateNumber} />
+          <FormLine label="Engine No" value={data.vehicleEngineNumber} />
+          <FormLine label="Chasis No" value={data.vehicleChassis} />
+          <FormLine label="To" value={buyer} />
+          <FormLine label="of" value={data.buyerAddress} />
+          <FormLine label="For the sum of" value={price > 0 ? numberToWords(price) : ""} />
+
+          <div className="flex items-end gap-1.5 text-[11px] text-black">
+            <span className="shrink-0 pb-[2px]">(N</span>
+            <span
+              className="min-w-[90px] px-1 pb-[1px] text-center text-[11.5px] font-bold text-black"
+              style={{ borderBottom: RULE }}
             >
-              {numberToWords(price)}
-            </p>
-            <DocField label="Payment Method" value={data.paymentMethod} />
+              {price > 0 ? Math.floor(price).toLocaleString() : " "}
+            </span>
+            <span className="shrink-0 pb-[2px]">: K</span>
+            <span
+              className="min-w-[44px] px-1 pb-[1px] text-center text-[11.5px] font-bold text-black"
+              style={{ borderBottom: RULE }}
+            >
+              {price > 0 ? String(kobo).padStart(2, "0") : " "}
+            </span>
+            <span className="shrink-0 pb-[2px]">
+              ) He/She had fully paid the total amount with effect from
+            </span>
           </div>
-        </section>
 
-        <section className="mb-5">
-          <DocSectionTitle>Terms of Agreement</DocSectionTitle>
-          <p className="text-[11px] leading-[1.75] text-black text-justify">
-            I, <InlineRuled>{data.sellerName}</InlineRuled> (Seller), confirm the sale and
-            transfer of full vehicle ownership to <InlineRuled>{data.buyerName}</InlineRuled>{" "}
-            (Buyer) for <span className="font-bold">{formatNaira(price)}</span> (
-            {numberToWords(price)}), facilitated by{" "}
-            <span className="font-bold">{COMPANY.name} {COMPANY.nameSuffix}</span>.
-          </p>
-          <p className="text-[11px] leading-[1.75] text-black text-justify mt-2">
-            The Seller warrants the vehicle is free from all encumbrances and title shall be
-            transferred upon receipt of full payment. Both parties confirm reading and
-            understanding these terms.
-          </p>
-        </section>
+          <FormLine label="today's date" value={longDate(data.effectiveDate)} />
+          <FormLine label="Alh/Mal/Mr/Mrs" value={buyer} />
+          <FormLine label="Is now the rightful owner of the said vehicle" value={vehicle} />
+        </div>
 
-        {data.note ? (
-          <section className="mb-5">
-            <DocSectionTitle>Note</DocSectionTitle>
-            <p className="text-[11px] leading-[1.7] text-black whitespace-pre-wrap">{data.note}</p>
-          </section>
-        ) : null}
+        <p className="text-[11.5px] text-black mt-[13px] mb-[5px]" style={{ fontFamily: PAPER_FONT }}>
+          Please change the ownership of the vehicle to new owners name and address:
+        </p>
+        <p
+          className="text-[11.5px] font-semibold text-black min-h-[16px] px-1 pb-[1px] whitespace-pre-wrap break-words"
+          style={{ borderBottom: RULE }}
+        >
+          {data.newOwnerDetails || [buyer, data.buyerAddress].filter(Boolean).join(", ") || " "}
+        </p>
 
-        <section className="mt-6">
-          <DocSectionTitle>Signatures &amp; Witnesses</DocSectionTitle>
-          <div className="grid grid-cols-2 gap-x-8 gap-y-6">
-            <ModernSignSlot
-              signature={data.sellerSignature}
-              caption="Seller's Signature"
-              name={data.sellerName}
-              date={longDate(data.agreementDate)}
-            />
-            <ModernSignSlot
-              signature={data.buyerSignature}
-              caption="Buyer's Signature"
-              name={data.buyerName}
-              date={longDate(data.agreementDate)}
-            />
-            <ModernSignSlot
-              signature={data.sellerWitnessSignature}
-              caption="Witness to the Seller"
-              name={data.sellerWitnessName}
-            />
-            <ModernSignSlot
-              signature={data.buyerWitnessSignature}
-              caption="Witness to the Buyer"
-              name={data.buyerWitnessName}
-            />
-            <div className="col-span-2 pt-1" style={{ borderTop: RULE }}>
-              <div className="w-1/2 pt-3">
-                <ModernSignSlot
-                  signature={data.repSignature}
-                  caption={`For ${COMPANY.name} ${COMPANY.nameSuffix}`}
-                  name={data.repName}
-                  date={longDate(data.repSignatureDate)}
-                />
-              </div>
+        {/* ── Signatures ────────────────────────────────────────────────── */}
+        <div
+          className="grid grid-cols-2 gap-x-10 gap-y-[9px] mt-7"
+          style={{ fontFamily: PAPER_FONT }}
+        >
+          <SignOnLine signature={data.sellerSignature} caption="Seller's Sign" />
+          <SignOnLine signature={data.buyerSignature} caption="Buyer's sign" />
+
+          <SignLine label="Date:" value={longDate(data.sellerSignDate)} />
+          <SignLine label="Date:" value={longDate(data.buyerSignDate)} />
+
+          <SignLine label="Witness Name:" value={data.sellerWitnessName} />
+          <SignLine label="Witness Name:" value={data.buyerWitnessName} />
+
+          <div className="flex items-end gap-1.5">
+            <span className="shrink-0 pb-[2px] text-[10.5px] text-black">Signature:</span>
+            <span className="flex-1 min-w-0 h-[26px] flex items-end justify-center pb-[1px]" style={{ borderBottom: RULE }}>
+              {data.sellerWitnessSignature ? (
+                <img src={data.sellerWitnessSignature} alt="" className="max-h-[24px] object-contain" style={{ filter: "brightness(0)" }} />
+              ) : null}
+            </span>
+          </div>
+          <div className="flex items-end gap-1.5">
+            <span className="shrink-0 pb-[2px] text-[10.5px] text-black">Signature:</span>
+            <span className="flex-1 min-w-0 h-[26px] flex items-end justify-center pb-[1px]" style={{ borderBottom: RULE }}>
+              {data.buyerWitnessSignature ? (
+                <img src={data.buyerWitnessSignature} alt="" className="max-h-[24px] object-contain" style={{ filter: "brightness(0)" }} />
+              ) : null}
+            </span>
+          </div>
+
+          <SignLine label="Date:" value={longDate(data.sellerWitnessDate)} />
+          <SignLine label="Date:" value={longDate(data.buyerWitnessDate)} />
+        </div>
+
+        {/* ── The office's own signature and stamp ──────────────────────── */}
+        <div className="mt-8 flex justify-center" style={{ fontFamily: PAPER_FONT }}>
+          <div className="w-[78%]">
+            <div className="h-[48px] flex items-end justify-center pb-[2px]" style={{ borderBottom: RULE }}>
+              {data.repSignature ? (
+                <img src={data.repSignature} alt="" className="max-h-[44px] object-contain" style={{ filter: "brightness(0)" }} />
+              ) : null}
             </div>
+            <p className="text-center text-[10.5px] text-black mt-[3px]">
+              (Signature and Stamp of Authorised representative of the{" "}
+              <span className="font-bold">Manga Automobile</span>)
+            </p>
+            {data.repName ? (
+              <p className="text-center text-[10px] font-semibold text-black mt-[2px]">{data.repName}</p>
+            ) : null}
           </div>
-        </section>
+        </div>
       </div>
     </div>
   );
@@ -283,12 +436,24 @@ export default function SalesAgreement() {
     queryFn: async () => {
       // Signature columns hold base64 PNGs, so the history list leaves them out
       // and the full row is fetched when a document is previewed or edited.
-      const { data, error } = await supabase
-        .from("sales_agreements")
-        .select("id, created_at, agreement_date, seller_name, seller_address, seller_phone, seller_id_type, buyer_name, buyer_address, buyer_phone, buyer_id_type, vehicle_make, vehicle_year_model, vehicle_color, vehicle_engine_number, vehicle_chassis, vehicle_plate_number, sale_price, payment_method, note, seller_witness_name, buyer_witness_name, rep_name, rep_signature_date")
-        .order("created_at", { ascending: false });
-      if (error) throw error;
-      return data as any[];
+      const BASE = "id, created_at, agreement_date, seller_name, seller_address, seller_phone, seller_id_type, buyer_name, buyer_address, buyer_phone, buyer_id_type, vehicle_make, vehicle_year_model, vehicle_color, vehicle_engine_number, vehicle_chassis, vehicle_plate_number, sale_price, payment_method, note, seller_witness_name, buyer_witness_name, rep_name, rep_signature_date";
+
+      // Newest shape first; the last attempt asks for nothing new, so it always
+      // works on a database that is a migration behind.
+      return await firstWorkingSelect<any[]>(
+        [
+          () => supabase.from("sales_agreements")
+            .select(`${BASE}, ${PAPER_SELECT}`)
+            .order("created_at", { ascending: false }),
+          () => supabase.from("sales_agreements")
+            .select(BASE)
+            .order("created_at", { ascending: false }),
+        ],
+        PAPER_COLUMNS,
+        () => warnOnce("sa-paper-columns", () =>
+          console.warn("[Sales Agreement] paper-form columns are missing; run 20261112100000_sales_agreement_paper_form.sql")
+        )
+      );
     },
   });
 
@@ -306,10 +471,13 @@ export default function SalesAgreement() {
     mutationFn: async () => {
       const payload = {
         agreement_date: form.agreementDate || null,
+        document_no: form.documentNo.trim() || null,
+        seller_title: form.sellerTitle.trim() || null,
         seller_name: form.sellerName.trim(),
         seller_address: form.sellerAddress.trim() || null,
         seller_phone: form.sellerPhone.trim() || null,
         seller_id_type: form.sellerIdType.trim() || null,
+        buyer_title: form.buyerTitle.trim() || null,
         buyer_name: form.buyerName.trim(),
         buyer_address: form.buyerAddress.trim() || null,
         buyer_phone: form.buyerPhone.trim() || null,
@@ -323,41 +491,60 @@ export default function SalesAgreement() {
         sale_price: form.salePrice.replace(/,/g, "") || null,
         payment_method: form.paymentMethod.trim() || null,
         note: form.note.trim() || null,
+        effective_date: form.effectiveDate || null,
+        new_owner_details: form.newOwnerDetails.trim() || null,
         seller_signature: form.sellerSignature || null,
-        buyer_signature: form.buyerSignature || null,
+        seller_sign_date: form.sellerSignDate || null,
         seller_witness_name: form.sellerWitnessName.trim() || null,
         seller_witness_signature: form.sellerWitnessSignature || null,
+        seller_witness_date: form.sellerWitnessDate || null,
+        buyer_signature: form.buyerSignature || null,
+        buyer_sign_date: form.buyerSignDate || null,
         buyer_witness_name: form.buyerWitnessName.trim() || null,
         buyer_witness_signature: form.buyerWitnessSignature || null,
+        buyer_witness_date: form.buyerWitnessDate || null,
         rep_name: form.repName.trim() || null,
         rep_signature: form.repSignature || null,
         rep_signature_date: form.repSignatureDate || null,
         created_by: user?.id ?? null,
       };
 
+      const onMissing = () =>
+        warnOnce("sa-paper-write", () =>
+          toast.warning("Saved, but the new form fields need the latest migration")
+        );
+
       if (editingId) {
-        const { error } = await supabase
-          .from("sales_agreements")
-          .update(payload)
-          .eq("id", editingId);
-        if (error) throw error;
+        await withSchemaFallback(
+          () => supabase.from("sales_agreements").update(payload).eq("id", editingId).select("id"),
+          () => supabase.from("sales_agreements")
+            .update(omitKeys(payload, PAPER_COLUMNS)).eq("id", editingId).select("id"),
+          PAPER_COLUMNS,
+          onMissing
+        );
         await logAction("UPDATE", ENTITY, editingId);
-        return editingId;
+        return { id: editingId, document_no: form.documentNo || null };
       }
 
-      const { data, error } = await supabase
-        .from("sales_agreements")
-        .insert(payload)
-        .select("id")
-        .single();
-      if (error) throw error;
-      await logAction("CREATE", ENTITY, data.id);
-      return data.id as string;
+      const inserted = await withSchemaFallback<{ id: string; document_no?: string | null }>(
+        () => supabase.from("sales_agreements").insert(payload)
+          .select("id, document_no").single(),
+        () => supabase.from("sales_agreements")
+          .insert(omitKeys(payload, PAPER_COLUMNS)).select("id").single(),
+        PAPER_COLUMNS,
+        onMissing
+      );
+      await logAction("CREATE", ENTITY, inserted.id);
+      return inserted;
     },
-    onSuccess: (id) => {
+    onSuccess: ({ id, document_no }) => {
+      // Left blank, the serial is assigned by the database; typed in, it is the
+      // number pre-printed in the physical book and comes straight back.
+      const saved = { ...form, documentNo: document_no || form.documentNo };
       setEditingId(id);
       setPreviewId(id);
-      setPreviewData({ ...form });
+      setForm(saved);
+      setPreviewData(saved);
       queryClient.invalidateQueries({ queryKey: ["sales_agreements"] });
       clearDraft();
       toast.success("Document saved to history");
@@ -410,6 +597,7 @@ export default function SalesAgreement() {
     return records.filter((r) => {
       const matchesSearch =
         !q ||
+        (r.document_no || "").toLowerCase().includes(q) ||
         (r.seller_name || "").toLowerCase().includes(q) ||
         (r.buyer_name || "").toLowerCase().includes(q) ||
         (r.vehicle_make || "").toLowerCase().includes(q) ||
@@ -421,6 +609,11 @@ export default function SalesAgreement() {
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const safePage = Math.min(page, pageCount - 1);
   const paged = filtered.slice(safePage * pageSize, (safePage + 1) * pageSize);
+
+  /** True while the seller side still holds the dealership's own details. */
+  const isCompanySeller =
+    form.sellerName.trim() === COMPANY_SELLER.sellerName &&
+    form.sellerAddress.trim() === COMPANY_SELLER.sellerAddress;
 
   const canSubmit =
     !!form.sellerName.trim() && !!form.buyerName.trim() && !!form.vehicleMake.trim() &&
@@ -437,11 +630,9 @@ export default function SalesAgreement() {
           accentClass="bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20"
           onBack={() => setMode("edit")}
         />
-        <div className="print-pages-container">
-          <div ref={documentRef}>
-            <AgreementDocument data={previewData} />
-          </div>
-        </div>
+        <PrintSheet ref={documentRef}>
+          <AgreementDocument data={previewData} />
+        </PrintSheet>
       </div>
     );
   }
@@ -490,22 +681,88 @@ export default function SalesAgreement() {
                   </div>
                 )}
 
-                <div className="max-w-xs space-y-2">
-                  <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    Agreement Date
-                  </Label>
-                  <Input type="date" name="agreementDate" value={form.agreementDate}
-                    onChange={handleChange}
-                    className="rounded-xl h-11 bg-background/50 border-white/10" />
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="documentNo" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Document No
+                    </Label>
+                    <Input id="documentNo" name="documentNo" value={form.documentNo}
+                      onChange={handleChange} placeholder="e.g. 1003"
+                      className="rounded-xl h-11 bg-background/50 border-white/10 font-bold" />
+                    <p className="text-[11px] text-muted-foreground">
+                      The serial printed on the leaf of the book. Leave it blank and
+                      one is assigned on save.
+                    </p>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="agreementDate" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Agreement Date
+                    </Label>
+                    <Input id="agreementDate" type="date" name="agreementDate" value={form.agreementDate}
+                      onChange={handleChange}
+                      className="rounded-xl h-11 bg-background/50 border-white/10" />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="effectiveDate" className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      Paid In Full From
+                    </Label>
+                    <Input id="effectiveDate" type="date" name="effectiveDate" value={form.effectiveDate}
+                      onChange={handleChange}
+                      className="rounded-xl h-11 bg-background/50 border-white/10" />
+                    <p className="text-[11px] text-muted-foreground">
+                      Prints as “with effect from today's date”.
+                    </p>
+                  </div>
                 </div>
 
+                <p className="text-[11px] text-muted-foreground -mt-4">
+                  Phone, ID, payment method and notes are kept on file for your records —
+                  the printed form carries only what is on the paper agreement.
+                </p>
+
                 <div>
-                  <SectionLabel>Seller's Information</SectionLabel>
+                  <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-emerald-500">
+                      Seller's Information — Manga Automobiles
+                    </p>
+                    {!isCompanySeller && (
+                      <Button
+                        variant="ghost" size="sm"
+                        onClick={() => setForm((prev) => ({ ...prev, ...COMPANY_SELLER }))}
+                        className="h-7 rounded-lg text-xs text-emerald-500 hover:bg-emerald-500/10"
+                      >
+                        Use Manga Automobiles
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-muted-foreground -mt-1 mb-3">
+                    The dealership is the seller, so this side is filled in with the company's
+                    own details. Change it only when the office is signing a car over on an
+                    owner's behalf.
+                  </p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground">Full name *</Label>
-                      <Input name="sellerName" value={form.sellerName} onChange={handleChange}
-                        className="rounded-xl h-11 bg-background/50 border-white/10" />
+                    <div className="grid grid-cols-[110px_1fr] gap-3">
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">Title</Label>
+                        <Select
+                          value={form.sellerTitle}
+                          onValueChange={(v) => setForm((prev) => ({ ...prev, sellerTitle: v }))}
+                        >
+                          <SelectTrigger aria-label="Seller title" className="rounded-xl h-11 bg-background/50 border-white/10">
+                            <SelectValue placeholder="—" />
+                          </SelectTrigger>
+                          <SelectContent className="glass-panel border-white/10 rounded-xl">
+                            {TITLES.map((t) => (
+                              <SelectItem key={t} value={t}>{t}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="sellerName" className="text-xs text-muted-foreground">Full name *</Label>
+                        <Input id="sellerName" name="sellerName" value={form.sellerName} onChange={handleChange}
+                          className="rounded-xl h-11 bg-background/50 border-white/10" />
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Phone</Label>
@@ -518,8 +775,9 @@ export default function SalesAgreement() {
                         className="rounded-xl h-11 bg-background/50 border-white/10" />
                     </div>
                     <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground">ID type &amp; number</Label>
+                      <Label className="text-xs text-muted-foreground">RC / ID number</Label>
                       <Input name="sellerIdType" value={form.sellerIdType} onChange={handleChange}
+                        placeholder="Company RC no, or the owner's ID"
                         className="rounded-xl h-11 bg-background/50 border-white/10" />
                     </div>
                     <div className="md:col-span-2">
@@ -540,10 +798,28 @@ export default function SalesAgreement() {
                 <div>
                   <SectionLabel>Buyer's Information</SectionLabel>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label className="text-xs text-muted-foreground">Full name *</Label>
-                      <Input name="buyerName" value={form.buyerName} onChange={handleChange}
-                        className="rounded-xl h-11 bg-background/50 border-white/10" />
+                    <div className="grid grid-cols-[110px_1fr] gap-3">
+                      <div className="space-y-2">
+                        <Label className="text-xs text-muted-foreground">Title</Label>
+                        <Select
+                          value={form.buyerTitle}
+                          onValueChange={(v) => setForm((prev) => ({ ...prev, buyerTitle: v }))}
+                        >
+                          <SelectTrigger aria-label="Buyer title" className="rounded-xl h-11 bg-background/50 border-white/10">
+                            <SelectValue placeholder="—" />
+                          </SelectTrigger>
+                          <SelectContent className="glass-panel border-white/10 rounded-xl">
+                            {TITLES.map((t) => (
+                              <SelectItem key={t} value={t}>{t}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="buyerName" className="text-xs text-muted-foreground">Full name *</Label>
+                        <Input id="buyerName" name="buyerName" value={form.buyerName} onChange={handleChange}
+                          className="rounded-xl h-11 bg-background/50 border-white/10" />
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Phone</Label>
@@ -606,20 +882,20 @@ export default function SalesAgreement() {
                     <div className="space-y-2">
                       <div className="flex items-center justify-between">
                         <Label className="text-xs text-muted-foreground">Chassis / VIN</Label>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${form.vehicleChassis.length === VIN_MAX_LENGTH ? "bg-emerald-500 text-white" : "bg-emerald-500/10 text-emerald-500"}`}>
-                          {form.vehicleChassis.length} / {VIN_MAX_LENGTH}
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${form.vehicleChassis.length === VIN_FULL_LENGTH ? "bg-emerald-500 text-white" : "bg-emerald-500/10 text-emerald-500"}`}>
+                          {form.vehicleChassis.length} / {VIN_FULL_LENGTH}
                         </span>
                       </div>
                       <Input
                         value={form.vehicleChassis}
-                        maxLength={VIN_MAX_LENGTH}
+                        maxLength={VIN_FULL_LENGTH}
                         onChange={(e) =>
                           setForm((prev) => ({
                             ...prev,
                             vehicleChassis: e.target.value
                               .toUpperCase()
                               .replace(/\s+/g, "")
-                              .slice(0, VIN_MAX_LENGTH),
+                              .slice(0, VIN_FULL_LENGTH),
                           }))
                         }
                         className="rounded-xl h-11 bg-background/50 border-white/10 font-mono uppercase"
@@ -653,8 +929,19 @@ export default function SalesAgreement() {
                         className="rounded-xl h-11 bg-background/50 border-white/10" />
                     </div>
                     <div className="space-y-2 md:col-span-2">
-                      <Label className="text-xs text-muted-foreground">Note (optional)</Label>
-                      <Textarea name="note" value={form.note} onChange={handleChange}
+                      <Label htmlFor="newOwnerDetails" className="text-xs text-muted-foreground">
+                        New owner's name &amp; address (for the change of ownership)
+                      </Label>
+                      <Textarea id="newOwnerDetails" name="newOwnerDetails" value={form.newOwnerDetails}
+                        onChange={handleChange}
+                        placeholder="Leave blank to use the buyer's name and address"
+                        className="rounded-xl min-h-[70px] bg-background/50 border-white/10" />
+                    </div>
+                    <div className="space-y-2 md:col-span-2">
+                      <Label htmlFor="note" className="text-xs text-muted-foreground">
+                        Note — kept on file, not printed (optional)
+                      </Label>
+                      <Textarea id="note" name="note" value={form.note} onChange={handleChange}
                         placeholder="Anything agreed in addition to the terms above..."
                         className="rounded-xl min-h-[80px] bg-background/50 border-white/10" />
                     </div>
@@ -671,6 +958,9 @@ export default function SalesAgreement() {
                           label="Seller" value={form.sellerSignature}
                           onChange={(v) => setForm((prev) => ({ ...prev, sellerSignature: v }))} />
                       </div>
+                      <Input type="date" aria-label="Seller signature date" name="sellerSignDate"
+                        value={form.sellerSignDate} onChange={handleChange}
+                        className="rounded-xl h-10 bg-background/50 border-white/10 text-sm" />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Buyer</Label>
@@ -679,6 +969,9 @@ export default function SalesAgreement() {
                           label="Buyer" value={form.buyerSignature}
                           onChange={(v) => setForm((prev) => ({ ...prev, buyerSignature: v }))} />
                       </div>
+                      <Input type="date" aria-label="Buyer signature date" name="buyerSignDate"
+                        value={form.buyerSignDate} onChange={handleChange}
+                        className="rounded-xl h-10 bg-background/50 border-white/10 text-sm" />
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Seller's witness</Label>
@@ -687,9 +980,14 @@ export default function SalesAgreement() {
                           label="Seller's witness" value={form.sellerWitnessSignature}
                           onChange={(v) => setForm((prev) => ({ ...prev, sellerWitnessSignature: v }))} />
                       </div>
-                      <Input name="sellerWitnessName" value={form.sellerWitnessName} onChange={handleChange}
-                        placeholder="Witness full name"
-                        className="rounded-xl h-10 bg-background/50 border-white/10 text-sm" />
+                      <div className="grid grid-cols-2 gap-3">
+                        <Input name="sellerWitnessName" value={form.sellerWitnessName} onChange={handleChange}
+                          placeholder="Witness full name"
+                          className="rounded-xl h-10 bg-background/50 border-white/10 text-sm" />
+                        <Input type="date" aria-label="Seller's witness date" name="sellerWitnessDate"
+                          value={form.sellerWitnessDate} onChange={handleChange}
+                          className="rounded-xl h-10 bg-background/50 border-white/10 text-sm" />
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Buyer's witness</Label>
@@ -698,9 +996,14 @@ export default function SalesAgreement() {
                           label="Buyer's witness" value={form.buyerWitnessSignature}
                           onChange={(v) => setForm((prev) => ({ ...prev, buyerWitnessSignature: v }))} />
                       </div>
-                      <Input name="buyerWitnessName" value={form.buyerWitnessName} onChange={handleChange}
-                        placeholder="Witness full name"
-                        className="rounded-xl h-10 bg-background/50 border-white/10 text-sm" />
+                      <div className="grid grid-cols-2 gap-3">
+                        <Input name="buyerWitnessName" value={form.buyerWitnessName} onChange={handleChange}
+                          placeholder="Witness full name"
+                          className="rounded-xl h-10 bg-background/50 border-white/10 text-sm" />
+                        <Input type="date" aria-label="Buyer's witness date" name="buyerWitnessDate"
+                          value={form.buyerWitnessDate} onChange={handleChange}
+                          className="rounded-xl h-10 bg-background/50 border-white/10 text-sm" />
+                      </div>
                     </div>
                     <div className="space-y-2 md:col-span-2">
                       <Label className="text-xs text-muted-foreground">Company representative</Label>
@@ -746,7 +1049,7 @@ export default function SalesAgreement() {
             <div className="relative flex-1 min-w-0">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search seller, buyer, vehicle or chassis..."
+                placeholder="Search document no, seller, buyer, vehicle or chassis..."
                 value={search}
                 onChange={(e) => { setSearch(e.target.value); setPage(0); }}
                 className="h-10 pl-9 rounded-xl bg-background/50 border-white/10"
@@ -808,6 +1111,11 @@ export default function SalesAgreement() {
                 <div key={r.id} className="bento-card p-5 flex flex-col gap-3">
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
+                      {r.document_no ? (
+                        <p className="text-[10px] font-bold text-muted-foreground mb-0.5">
+                          No. {r.document_no}
+                        </p>
+                      ) : null}
                       <p className="font-bold text-sm truncate">{r.seller_name} → {r.buyer_name}</p>
                       <p className="text-xs text-muted-foreground truncate">
                         {r.vehicle_make} {r.vehicle_year_model}
@@ -820,25 +1128,19 @@ export default function SalesAgreement() {
                   <p className="text-base font-bold text-foreground">
                     {formatNaira(r.sale_price || 0)}
                   </p>
-                  <div className="flex gap-1.5 pt-2 border-t border-white/5">
-                    <Button variant="outline" size="sm" onClick={() => openPreview(r)}
-                      className="h-8 text-xs rounded-lg border-white/10">
-                      <Eye className="h-3.5 w-3.5 mr-1.5" /> Preview
-                    </Button>
-                    {mayEdit && (
-                      <Button variant="outline" size="sm" onClick={() => openEdit(r)}
-                        className="h-8 text-xs rounded-lg border-white/10">
-                        <Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit
-                      </Button>
-                    )}
-                    {mayDelete && (
-                      <Button variant="ghost" size="icon" aria-label="Delete document"
-                        onClick={() => setDeleteId(r.id)}
-                        className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
+                  <RecordActions
+                    menuLabel={`More actions for document ${r.document_no || r.seller_name}`}
+                    primary={[
+                      { label: "Preview", icon: Eye, onClick: () => openPreview(r) },
+                      { label: "Edit", icon: Pencil, onClick: () => openEdit(r), show: mayEdit },
+                    ]}
+                    menu={[
+                      {
+                        label: "Delete document", icon: Trash2,
+                        onClick: () => setDeleteId(r.id), destructive: true, show: mayDelete,
+                      },
+                    ]}
+                  />
                 </div>
               ))}
             </div>
@@ -865,26 +1167,20 @@ export default function SalesAgreement() {
                         <TableCell className="text-sm font-semibold">{formatNaira(r.sale_price || 0)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{shortDate(r.agreement_date)}</TableCell>
                         <TableCell className="text-right px-6">
-                          <div className="flex justify-end gap-1">
-                            <Button variant="ghost" size="icon" aria-label="Preview document"
-                              onClick={() => openPreview(r)}
-                              className="h-8 w-8 rounded-lg hover:bg-emerald-500/10 hover:text-emerald-500">
-                              <Eye className="h-4 w-4" />
-                            </Button>
-                            {mayEdit && (
-                              <Button variant="ghost" size="icon" aria-label="Edit document"
-                                onClick={() => openEdit(r)} className="h-8 w-8 rounded-lg hover:bg-foreground/10">
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                            )}
-                            {mayDelete && (
-                              <Button variant="ghost" size="icon" aria-label="Delete document"
-                                onClick={() => setDeleteId(r.id)}
-                                className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10">
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            )}
-                          </div>
+                          <RecordActions
+                            inline
+                            menuLabel={`More actions for document ${r.document_no || r.seller_name}`}
+                            primary={[
+                              { label: "Preview", icon: Eye, onClick: () => openPreview(r) },
+                            ]}
+                            menu={[
+                              { label: "Edit document", icon: Pencil, onClick: () => openEdit(r), show: mayEdit },
+                              {
+                                label: "Delete document", icon: Trash2, destructive: true,
+                                onClick: () => setDeleteId(r.id), show: mayDelete,
+                              },
+                            ]}
+                          />
                         </TableCell>
                       </TableRow>
                     ))}

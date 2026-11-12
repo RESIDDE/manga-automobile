@@ -30,6 +30,7 @@ import {
 import { toast } from "sonner";
 import { exportToCSV, exportToJSON, printTable, downloadTableAsPDF } from "@/lib/exportHelpers";
 import { CustomPagination } from "@/components/CustomPagination";
+import { RecordActions } from "@/components/RecordActions";
 import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
 import { canCreate, canDelete, canEdit, isUnrestricted } from "@/lib/permissions";
@@ -677,23 +678,19 @@ export default function VehiclesList() {
                     />
                   </div>
 
-                  <div className="flex gap-1.5 pt-2 border-t border-white/5 mt-auto">
-                    <Button variant="outline" size="sm" asChild className="h-8 text-xs rounded-lg border-white/10">
-                      <Link to={`/vehicles/${v.id}`}><Eye className="h-3.5 w-3.5 mr-1.5" /> Details</Link>
-                    </Button>
-                    {hasEdit && (
-                      <Button variant="outline" size="sm" asChild className="h-8 text-xs rounded-lg border-white/10">
-                        <Link to={`/vehicles/${v.id}/edit`}><Pencil className="h-3.5 w-3.5 mr-1.5" /> Edit</Link>
-                      </Button>
-                    )}
-                    {hasDelete && (
-                      <Button variant="ghost" size="icon" aria-label="Delete vehicle"
-                        onClick={() => setDeleteId(v.id)}
-                        className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
+                  <RecordActions
+                    menuLabel={`More actions for ${v.make} ${v.model}`}
+                    primary={[
+                      { label: "Details", icon: Eye, to: `/vehicles/${v.id}` },
+                      { label: "Edit", icon: Pencil, to: `/vehicles/${v.id}/edit`, show: hasEdit },
+                    ]}
+                    menu={[
+                      {
+                        label: "Delete vehicle", icon: Trash2,
+                        onClick: () => setDeleteId(v.id), destructive: true, show: hasDelete,
+                      },
+                    ]}
+                  />
                 </div>
               </div>
             );
@@ -761,25 +758,18 @@ export default function VehiclesList() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right px-6">
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" asChild aria-label="View vehicle"
-                            className="h-8 w-8 rounded-lg hover:bg-sky-500/10 hover:text-sky-500">
-                            <Link to={`/vehicles/${v.id}`}><Eye className="h-4 w-4" /></Link>
-                          </Button>
-                          {hasEdit && (
-                            <Button variant="ghost" size="icon" asChild aria-label="Edit vehicle"
-                              className="h-8 w-8 rounded-lg hover:bg-foreground/10">
-                              <Link to={`/vehicles/${v.id}/edit`}><Pencil className="h-4 w-4" /></Link>
-                            </Button>
-                          )}
-                          {hasDelete && (
-                            <Button variant="ghost" size="icon" aria-label="Delete vehicle"
-                              onClick={() => setDeleteId(v.id)}
-                              className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
+                        <RecordActions
+                          inline
+                          menuLabel={`More actions for ${v.make} ${v.model}`}
+                          primary={[{ label: "Details", icon: Eye, to: `/vehicles/${v.id}` }]}
+                          menu={[
+                            { label: "Edit vehicle", icon: Pencil, to: `/vehicles/${v.id}/edit`, show: hasEdit },
+                            {
+                              label: "Delete vehicle", icon: Trash2, destructive: true,
+                              onClick: () => setDeleteId(v.id), show: hasDelete,
+                            },
+                          ]}
+                        />
                       </TableCell>
                     </TableRow>
                   );

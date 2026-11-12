@@ -43,7 +43,9 @@ describe("PropertyIntake page", () => {
     // Letterhead carries the Manga Automobiles artwork, not the old AMU branding
     const marks = screen.getAllByAltText("MANGA AUTOMOBILES");
     expect(marks.length).toBeGreaterThan(0);
-    expect(marks[0].getAttribute("src")).toMatch(/logo-print/);
+    // logo-letterhead.png is the print copy, inlined into the bundle so a
+    // document can never print without its letterhead (vite.config.ts)
+    expect(marks[0].getAttribute("src")).toMatch(/logo-letterhead|^data:image/);
     expect(screen.queryByText(/A\.M\.U GLOBAL MOTORS/i)).toBeNull();
 
     // Step 1

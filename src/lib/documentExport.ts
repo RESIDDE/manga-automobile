@@ -25,6 +25,9 @@ export async function captureDocumentElement(
   el: HTMLElement,
   format: DocFormat = "pdf"
 ): Promise<Blob> {
+  // Same reason as printing: an undecoded logo rasterises as nothing at all.
+  await waitForImages(el);
+
   const html2canvas = await loadHtml2Canvas();
   const canvas = await html2canvas(el, {
     scale: 2,
@@ -75,6 +78,35 @@ export function saveBlob(blob: Blob, filename: string, format: DocFormat) {
 }
 
 /**
+ * Waits for every image under `root` to be decoded.
+ *
+ * Chrome rasterises the print preview from the live DOM the moment `print()` is
+ * called. An image that has not finished decoding by then prints as a broken
+ * placeholder — which is how documents came out with no letterhead and no
+ * watermark. Waiting costs nothing once the images are warm, and a failed image
+ * resolves rather than rejecting so a print is never blocked by one.
+ */
+export async function waitForImages(root: ParentNode | null): Promise<void> {
+  if (!root) return;
+  const images = Array.from(root.querySelectorAll("img"));
+
+  await Promise.all(
+    images.map(
+      (img) =>
+        new Promise<void>((resolve) => {
+          if (img.complete && img.naturalWidth > 0) {
+            // decode() can still reject on a detached or cross-origin image
+            img.decode().then(() => resolve(), () => resolve());
+            return;
+          }
+          img.addEventListener("load", () => resolve(), { once: true });
+          img.addEventListener("error", () => resolve(), { once: true });
+        })
+    )
+  );
+}
+
+/**
  * Prints the document. In a browser tab this is the native print dialog; in an
  * installed app (where iOS offers no print dialog) it builds a PDF and hands it to
  * the share sheet, falling back to a download.
@@ -84,6 +116,9 @@ export async function printDocument(
   filename: string
 ): Promise<void> {
   if (!isStandaloneApp()) {
+    // The portal copy (PrintSheet) is what actually prints, so its images are
+    // the ones that have to be ready.
+    await waitForImages(document.getElementById("print-portal"));
     window.print();
     return;
   }

@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard, Car, Users, FileSignature, MapPinned,
   Crown, Calendar, Building2, Search, ChevronsLeft, ChevronsRight,
-  ChevronDown, Plus, LogOut, Wallet,
+  ChevronDown, Plus, LogOut, Wallet, Receipt,
 } from "lucide-react";
 import { NairaIcon } from "@/components/NairaIcon";
 import { NavLink } from "@/components/NavLink";
@@ -50,19 +50,25 @@ const ALL_NAV_ITEMS: NavItem[] = [
       { title: "Add Outside Car", url: "/vehicles/new?type=external", pageKey: "outside-vehicles" },
     ],
   },
-  { title: "Sales", url: "/sales", pageKey: "sales", icon: (props) => <NairaIcon {...props} /> },
+  {
+    title: "Sales", url: "/sales", pageKey: "sales", icon: (props) => <NairaIcon {...props} />,
+    children: [
+      { title: "All Sales", url: "/sales", pageKey: "sales", end: true },
+      { title: "Vehicle Display Consignment", url: "/consignment-agreement", pageKey: "sales" },
+    ],
+  },
   { title: "Customers", url: "/customers", pageKey: "customers", icon: Users },
   {
-    title: "Documents", url: "/authority-to-sell", pageKey: "authority-to-sell", icon: FileSignature,
+    title: "Documents", url: "/sales-agreement", pageKey: "sales-agreement", icon: FileSignature,
     children: [
-      { title: "Authority to Sell", url: "/authority-to-sell", pageKey: "authority-to-sell", end: true },
-      { title: "Sales Agreement", url: "/sales-agreement", pageKey: "authority-to-sell" },
+      { title: "Sales Agreement", url: "/sales-agreement", pageKey: "sales-agreement", end: true },
       { title: "Proforma Invoice", url: "/performance-quotes", pageKey: "performance-quotes" },
     ],
   },
   { title: "Property", url: "/property-intake", pageKey: "property-intake", icon: Building2 },
   { title: "Meetings", url: "/meetings", pageKey: "meetings", icon: Calendar },
   { title: "Salary", url: "/salary-schedule", pageKey: "salary", icon: Wallet },
+  { title: "Expenses", url: "/expenses", pageKey: "expenses", icon: Receipt },
 ];
 
 const ROW = "flex items-center gap-3 rounded-xl px-3 h-10 text-sm font-medium transition-colors duration-200";
@@ -104,8 +110,8 @@ export function AppSidebar() {
           const children = i.children?.filter((c) => accessible.includes(c.pageKey));
           const canOpenParent = accessible.includes(i.pageKey as PageKey);
           // A group survives if the role can open the parent or any child. The
-          // Documents group is keyed on authority-to-sell, so a role granted
-          // only the proforma invoice used to lose the whole group with it.
+          // Documents group is keyed on sales-agreement, so a role granted only
+          // the proforma invoice used to lose the whole group with it.
           if (!canOpenParent && !children?.length) return null;
           return {
             ...i,

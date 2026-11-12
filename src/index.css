@@ -186,6 +186,29 @@
   }
 }
 
+/* The print portal (see src/components/PrintSheet.tsx) holds a second copy of
+   the sheet as a direct child of <body>. It never shows on screen. */
+#print-portal {
+  display: none;
+}
+
+@media print {
+  /* A printed document is the sheet and nothing else: every other child of
+     <body> goes, app shell and its dark backgrounds with it. This is what
+     removes the black border that used to frame the paper. */
+  body.has-print-sheet > *:not(#print-portal) {
+    display: none !important;
+  }
+  #print-portal {
+    display: block !important;
+  }
+  /* The on-screen copy of the sheet lives inside the app shell, so it is
+     already hidden by the rule above; this is belt and braces. */
+  .screen-only {
+    display: none !important;
+  }
+}
+
 @media print {
   /* Reset layout for physical paper */
   body, html {

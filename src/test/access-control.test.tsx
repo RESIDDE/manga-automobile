@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { MemoryRouter } from "react-router-dom";
 import type { PermissionsMap } from "@/lib/permissions";
@@ -90,6 +90,20 @@ const grant = (over: Partial<Record<"view" | "create" | "edit" | "delete", strin
   };
 };
 
+/**
+ * Edit and Delete live in the sale card's overflow menu, so a test has to open
+ * it before it can see — or fail to see — them.
+ *
+ * Opened by keyboard rather than by pointer: jsdom has no PointerEvent, so a
+ * synthesised pointerdown carries no `button` and Radix ignores it. Enter on a
+ * focused trigger is a real way a user opens this menu anyway.
+ */
+async function rowMenu() {
+  const trigger = await screen.findByRole("button", { name: /More actions/i });
+  fireEvent.keyDown(trigger, { key: "Enter" });
+  return within(await screen.findByRole("menu"));
+}
+
 describe("access control gates the Sales page", () => {
   beforeEach(() => { currentRole.value = "sales"; });
 
@@ -99,8 +113,10 @@ describe("access control gates the Sales page", () => {
 
     expect(await screen.findByText("Zainab Bello")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Record Sale/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Edit sale/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Delete sale/i })).toBeNull();
+
+    const menu = await rowMenu();
+    expect(menu.queryByRole("menuitem", { name: /Edit sale/i })).toBeNull();
+    expect(menu.queryByRole("menuitem", { name: /Delete sale/i })).toBeNull();
   });
 
   it("add: the Record Sale button appears, edit and delete stay hidden", async () => {
@@ -108,16 +124,19 @@ describe("access control gates the Sales page", () => {
     renderSales();
 
     expect(await screen.findAllByRole("button", { name: /Record Sale/i })).not.toHaveLength(0);
-    expect(screen.queryByRole("button", { name: /Edit sale/i })).toBeNull();
-    expect(screen.queryByRole("button", { name: /Delete sale/i })).toBeNull();
+
+    const menu = await rowMenu();
+    expect(menu.queryByRole("menuitem", { name: /Edit sale/i })).toBeNull();
+    expect(menu.queryByRole("menuitem", { name: /Delete sale/i })).toBeNull();
   });
 
   it("edit: the edit action appears but delete does not — delete is never implied", async () => {
     grant({ view: ["sales"], edit: ["sales"] });
     renderSales();
 
-    expect(await screen.findByRole("button", { name: /Edit sale/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Delete sale/i })).toBeNull();
+    const menu = await rowMenu();
+    expect(menu.getByRole("menuitem", { name: /Edit sale/i })).toBeInTheDocument();
+    expect(menu.queryByRole("menuitem", { name: /Delete sale/i })).toBeNull();
     expect(screen.queryByRole("button", { name: /Record Sale/i })).toBeNull();
   });
 
@@ -125,17 +144,20 @@ describe("access control gates the Sales page", () => {
     grant({ view: ["sales"], delete: ["sales"] });
     renderSales();
 
-    expect(await screen.findByRole("button", { name: /Delete sale/i })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: /Edit sale/i })).toBeNull();
+    const menu = await rowMenu();
+    expect(menu.getByRole("menuitem", { name: /Delete sale/i })).toBeInTheDocument();
+    expect(menu.queryByRole("menuitem", { name: /Edit sale/i })).toBeNull();
   });
 
   it("all four: every action is available", async () => {
     grant({ view: ["sales"], create: ["sales"], edit: ["sales"], delete: ["sales"] });
     renderSales();
 
-    expect(await screen.findByRole("button", { name: /Edit sale/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Delete sale/i })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /Record Sale/i })).not.toHaveLength(0);
+    expect(await screen.findAllByRole("button", { name: /Record Sale/i })).not.toHaveLength(0);
+
+    const menu = await rowMenu();
+    expect(menu.getByRole("menuitem", { name: /Edit sale/i })).toBeInTheDocument();
+    expect(menu.getByRole("menuitem", { name: /Delete sale/i })).toBeInTheDocument();
   });
 
   it("admin keeps every action even when the matrix grants nothing", async () => {
@@ -143,7 +165,8 @@ describe("access control gates the Sales page", () => {
     matrix.current = { admin: { view: [], create: [], edit: [], delete: [] } } as PermissionsMap;
     renderSales();
 
-    expect(await screen.findByRole("button", { name: /Edit sale/i })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Delete sale/i })).toBeInTheDocument();
+    const menu = await rowMenu();
+    expect(menu.getByRole("menuitem", { name: /Edit sale/i })).toBeInTheDocument();
+    expect(menu.getByRole("menuitem", { name: /Delete sale/i })).toBeInTheDocument();
   });
 });

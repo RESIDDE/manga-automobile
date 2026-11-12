@@ -132,8 +132,13 @@ describe("Sales page", () => {
 
   it("derives the balance from the instalments, not the stored status", async () => {
     renderSales();
-    // ₦3,000,000 sale with one ₦1,000,000 payment → ₦2,000,000 due
-    expect(await screen.findByText("₦2,000,000 due")).toBeInTheDocument();
+    // ₦3,000,000 sale with one ₦1,000,000 payment → ₦1,000,000 paid, ₦2,000,000 due.
+    // The card sets the figures in their own elements, so match the line as a whole.
+    const card = await screen.findByText("Part paid");
+    const line = card.closest(".bento-card")!;
+    expect(line.textContent).toContain("₦1,000,000");
+    expect(line.textContent).toContain("₦2,000,000");
+    expect(line.textContent).toContain("due");
   });
 
   it("lists one receipt per sale and one per payment", async () => {
@@ -174,8 +179,11 @@ describe("Sales page", () => {
     const buttons = await screen.findAllByRole("button", { name: /^Receipt$/i });
     fireEvent.click(buttons[buttons.length - 1]);
 
-    expect(await screen.findByText("Sales Receipt")).toBeInTheDocument();
-    expect(screen.getByText("Balance due")).toBeInTheDocument();
+    // The sheet is rendered twice (page + print portal), so scope to the page
+    expect((await screen.findAllByText("Sales Receipt")).length).toBeGreaterThan(0);
+    const sheet = within(document.querySelector(".screen-only") as HTMLElement);
+    expect(sheet.getByText("Sales Receipt")).toBeInTheDocument();
+    expect(sheet.getByText("Balance due")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Back to Sales/i })).toBeInTheDocument();
   });
 });
@@ -195,7 +203,9 @@ describe("Sales page with a pending migration", () => {
     missingSchema.current = ["sale_payments"];
     renderSales();
     // No instalments readable, and the sale is flagged deposit → full balance due
-    expect(await screen.findByText("₦3,000,000 due")).toBeInTheDocument();
+    const card = (await screen.findByText("Part paid")).closest(".bento-card")!;
+    expect(card.textContent).toContain("₦3,000,000");
+    expect(card.textContent).toContain("due");
   });
 
   it("still offers vehicles when inventory_type does not exist yet", async () => {

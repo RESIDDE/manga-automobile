@@ -10,6 +10,7 @@ import { AlertCircle, CheckCircle, PenLine, ShieldCheck } from "lucide-react";
 import {
   SaleReceiptDocument, type ReceiptBankDetails, type ReceiptLineItem,
 } from "@/components/SaleReceiptDocument";
+import { PrintSheet } from "@/components/PrintSheet";
 import { withSchemaFallback } from "@/lib/dbCompat";
 import { formatNaira } from "@/lib/numberToWords";
 import { derivePaymentState } from "@/lib/receipts";
@@ -219,14 +220,14 @@ export default function SignSale() {
         ) : null}
 
         {/* The document itself — the same component the office prints */}
-        <div className="print-pages-container">
+        <PrintSheet>
           <SaleReceiptDocument
             sale={documentSale}
             customer={sale.customer ?? {}}
             items={items}
             bank={bank}
           />
-        </div>
+        </PrintSheet>
 
         {/* Signing panel */}
         <Card id="sign-panel" className="glass-panel border-white/10 rounded-3xl shadow-xl overflow-hidden print:hidden">

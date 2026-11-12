@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       authority_to_sell: {
         Row: {
+          document_no: string | null
           id: string
           created_at: string
           agreement_date: string | null
@@ -38,6 +39,7 @@ export type Database = {
           created_by: string | null
         }
         Insert: {
+          document_no?: string | null
           id?: string
           created_at?: string
           agreement_date?: string | null
@@ -60,6 +62,7 @@ export type Database = {
           created_by?: string | null
         }
         Update: {
+          document_no?: string | null
           id?: string
           created_at?: string
           agreement_date?: string | null
@@ -114,6 +117,15 @@ export type Database = {
           rep_name: string | null
           rep_signature: string | null
           rep_signature_date: string | null
+          document_no: string | null
+          seller_title: string | null
+          buyer_title: string | null
+          effective_date: string | null
+          new_owner_details: string | null
+          seller_sign_date: string | null
+          buyer_sign_date: string | null
+          seller_witness_date: string | null
+          buyer_witness_date: string | null
           created_by: string | null
         }
         Insert: {
@@ -146,6 +158,15 @@ export type Database = {
           rep_name?: string | null
           rep_signature?: string | null
           rep_signature_date?: string | null
+          document_no?: string | null
+          seller_title?: string | null
+          buyer_title?: string | null
+          effective_date?: string | null
+          new_owner_details?: string | null
+          seller_sign_date?: string | null
+          buyer_sign_date?: string | null
+          seller_witness_date?: string | null
+          buyer_witness_date?: string | null
           created_by?: string | null
         }
         Update: {
@@ -178,12 +199,22 @@ export type Database = {
           rep_name?: string | null
           rep_signature?: string | null
           rep_signature_date?: string | null
+          document_no?: string | null
+          seller_title?: string | null
+          buyer_title?: string | null
+          effective_date?: string | null
+          new_owner_details?: string | null
+          seller_sign_date?: string | null
+          buyer_sign_date?: string | null
+          seller_witness_date?: string | null
+          buyer_witness_date?: string | null
           created_by?: string | null
         }
         Relationships: []
       }
       performance_quotes: {
         Row: {
+          document_no: string | null
           id: string
           customer_id: string | null
           customer_name: string | null
@@ -205,6 +236,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          document_no?: string | null
           id?: string
           customer_id?: string | null
           customer_name?: string | null
@@ -226,6 +258,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          document_no?: string | null
           id?: string
           customer_id?: string | null
           customer_name?: string | null
@@ -331,6 +364,188 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["user_id"]
+          }
+        ]
+      }
+      consignment_agreements: {
+        Row: {
+          document_no: string | null
+          id: string
+          created_at: string
+          agreement_date: string | null
+          company_rep: string | null
+          company_address: string | null
+          company_phone: string | null
+          owner_name: string
+          owner_address: string | null
+          owner_phone: string | null
+          owner_id_number: string | null
+          vehicle_make_model: string
+          vehicle_year: string | null
+          vehicle_color: string | null
+          vehicle_chassis: string | null
+          agreed_price: number | null
+          commission_amount: number | null
+          commission_note: string | null
+          withdrawal_days: number | null
+          withdrawal_charge: number | null
+          notes: string | null
+          company_signature: string | null
+          company_sign_date: string | null
+          owner_signature: string | null
+          owner_sign_name: string | null
+          owner_sign_date: string | null
+          witness_signature: string | null
+          witness_name: string | null
+          created_by: string | null
+        }
+        Insert: {
+          document_no?: string | null
+          id?: string
+          created_at?: string
+          agreement_date?: string | null
+          company_rep?: string | null
+          company_address?: string | null
+          company_phone?: string | null
+          owner_name: string
+          owner_address?: string | null
+          owner_phone?: string | null
+          owner_id_number?: string | null
+          vehicle_make_model: string
+          vehicle_year?: string | null
+          vehicle_color?: string | null
+          vehicle_chassis?: string | null
+          agreed_price?: number | null
+          commission_amount?: number | null
+          commission_note?: string | null
+          withdrawal_days?: number | null
+          withdrawal_charge?: number | null
+          notes?: string | null
+          company_signature?: string | null
+          company_sign_date?: string | null
+          owner_signature?: string | null
+          owner_sign_name?: string | null
+          owner_sign_date?: string | null
+          witness_signature?: string | null
+          witness_name?: string | null
+          created_by?: string | null
+        }
+        Update: {
+          document_no?: string | null
+          id?: string
+          created_at?: string
+          agreement_date?: string | null
+          company_rep?: string | null
+          company_address?: string | null
+          company_phone?: string | null
+          owner_name?: string
+          owner_address?: string | null
+          owner_phone?: string | null
+          owner_id_number?: string | null
+          vehicle_make_model?: string
+          vehicle_year?: string | null
+          vehicle_color?: string | null
+          vehicle_chassis?: string | null
+          agreed_price?: number | null
+          commission_amount?: number | null
+          commission_note?: string | null
+          withdrawal_days?: number | null
+          withdrawal_charge?: number | null
+          notes?: string | null
+          company_signature?: string | null
+          company_sign_date?: string | null
+          owner_signature?: string | null
+          owner_sign_name?: string | null
+          owner_sign_date?: string | null
+          witness_signature?: string | null
+          witness_name?: string | null
+          created_by?: string | null
+        }
+        Relationships: []
+      }
+      expense_groups: {
+        Row: {
+          id: string
+          period: string
+          name: string
+          notes: string | null
+          sort_order: number
+          created_by: string | null
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          period: string
+          name: string
+          notes?: string | null
+          sort_order?: number
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          period?: string
+          name?: string
+          notes?: string | null
+          sort_order?: number
+          created_by?: string | null
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      expense_items: {
+        Row: {
+          id: string
+          group_id: string
+          description: string | null
+          amount: number
+          spent_on: string | null
+          paid_to: string | null
+          payment_method: string | null
+          reference: string | null
+          notes: string | null
+          sort_order: number
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          group_id: string
+          description?: string | null
+          amount?: number
+          spent_on?: string | null
+          paid_to?: string | null
+          payment_method?: string | null
+          reference?: string | null
+          notes?: string | null
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          group_id?: string
+          description?: string | null
+          amount?: number
+          spent_on?: string | null
+          paid_to?: string | null
+          payment_method?: string | null
+          reference?: string | null
+          notes?: string | null
+          sort_order?: number
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "expense_items_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "expense_groups"
+            referencedColumns: ["id"]
           }
         ]
       }

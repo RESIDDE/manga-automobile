@@ -1,5 +1,14 @@
 import type { ReactNode } from "react";
-import logoPrint from "@/assets/logo-print.png";
+// These two PNGs are inlined into the bundle as data URIs rather than emitted
+// as separate files (see assetsInlineLimit in vite.config.ts). They are the
+// letterhead and the watermark —
+// the two things that made a printed page look official — and as ordinary asset
+// URLs they could 404 (a stale tab after a redeploy, a cold cache) or simply
+// not finish loading before Chrome rasterised the print preview, which is
+// exactly how documents came out with a broken logo and no watermark. A data
+// URI cannot fail to load, needs no network, and is already decoded when
+// html2canvas captures the sheet.
+import logoPrint from "@/assets/logo-letterhead.png";
 import logoWatermark from "@/assets/logo-watermark.png";
 
 // Single source of truth for the letterhead stamped on every printed document
@@ -18,13 +27,15 @@ export const COMPANY = {
 };
 
 const NAVY = "#1b3a6b";
+/** The red of the printed stationery: the logo, the ADDRESS label, the banners. */
+const RED = "#e01f26";
 
 // ─── Shared document tokens ──────────────────────────────────────────────────
 // Every printable document pulls its colours and rules from here, so the three
 // document pages stay visually identical.
 export const BRAND_NAVY = NAVY;
 /** Kept for documents that want the accent colour by its generic name. */
-export const BRAND_RED = NAVY;
+export const BRAND_RED = RED;
 export const INK = "#000000";
 export const RULE = "1px solid #000000";
 export const ROW_RULE = "1px solid #d4d4d4";
@@ -32,30 +43,49 @@ export const POSITIVE = "#047857";
 export const MODERN_FONT =
   "'Segoe UI', system-ui, -apple-system, 'Helvetica Neue', Arial, sans-serif";
 
-// For use inside React DOM trees (like AuthorityToSell.tsx, PropertyIntake.tsx)
-export function PrintHeader() {
+/**
+ * The company letterhead, as it is actually printed on the stationery: the logo
+ * over a solid blue strip carrying the tagline, and a right-hand block headed
+ * by a red ADDRESS: label. There is no rule beneath it — the printed books do
+ * not have one.
+ *
+ * `docNumber` is the serial, set large under the address exactly where the book
+ * prints it.
+ */
+export function PrintHeader({ docNumber }: { docNumber?: string | null } = {}) {
   return (
-    <div className="pb-2 mb-4 relative">
+    <div className="mb-3 relative">
       <div className="flex items-start justify-between gap-6">
         <div className="shrink-0">
-          <img src={logoPrint} alt={`${COMPANY.name} ${COMPANY.nameSuffix}`} className="h-[62px] w-auto object-contain" />
-          <div className="mt-2 inline-block border-[1.5px] px-2 py-[2px]" style={{ borderColor: NAVY }}>
-            <span className="text-[8.5px] font-black uppercase tracking-wide" style={{ color: NAVY }}>
+          <img
+            src={logoPrint}
+            alt={`${COMPANY.name} ${COMPANY.nameSuffix}`}
+            className="h-[62px] w-auto object-contain"
+          />
+          <div className="mt-[6px] inline-block px-2 py-[2.5px]" style={{ backgroundColor: NAVY }}>
+            <span className="text-[8.5px] font-black uppercase tracking-[0.03em] text-white">
               {COMPANY.tagline}
             </span>
           </div>
         </div>
-        <div className="text-right text-[12.5px] font-bold text-black leading-snug">
-          <p className="text-[9px] font-black uppercase tracking-[0.2em] mb-1" style={{ color: NAVY }}>
-            Address
+
+        <div className="text-right leading-[1.35]">
+          <p className="text-[10px] font-black uppercase tracking-[0.06em]" style={{ color: RED }}>
+            Address:
           </p>
-          {COMPANY.addressLines.map((line) => (
-            <p key={line}>{line}</p>
-          ))}
-          <p className="mt-1 font-extrabold tracking-wide">Tel: {COMPANY.tel}</p>
+          <div className="text-[10.5px] font-semibold text-black">
+            {COMPANY.addressLines.map((line) => (
+              <p key={line} className="m-0">{line}</p>
+            ))}
+            <p className="m-0">Tel: {COMPANY.tel}</p>
+          </div>
+          {docNumber !== undefined && (
+            <p className="mt-[10px] text-[19px] font-bold tracking-[0.06em] text-black">
+              {docNumber || "\u00A0"}
+            </p>
+          )}
         </div>
       </div>
-      <div className="mt-2 h-[3px] w-full" style={{ backgroundColor: NAVY }} />
     </div>
   );
 }
@@ -66,25 +96,24 @@ export function getPrintHeaderHTML() {
     <div style="padding-bottom: 8px; margin-bottom: 14px; position: relative;">
       <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 24px;">
         <div style="flex-shrink: 0;">
-          <img src="${window.location.origin}${logoPrint}" alt="${COMPANY.name} ${COMPANY.nameSuffix}" style="height: 62px; width: auto; object-fit: contain; display: block;" />
-          <div style="display: inline-block; border: 1.5px solid ${NAVY}; padding: 2px 8px; margin-top: 8px;">
-            <span style="font-family: sans-serif; font-size: 8.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.5px; color: ${NAVY};">
+          <img src="${logoPrint}" alt="${COMPANY.name} ${COMPANY.nameSuffix}" style="height: 62px; width: auto; object-fit: contain; display: block;" />
+          <div style="display: inline-block; background: ${NAVY}; padding: 2.5px 8px; margin-top: 6px;">
+            <span style="font-family: sans-serif; font-size: 8.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.3px; color: #fff;">
               ${COMPANY.tagline}
             </span>
           </div>
         </div>
-        <div style="text-align: right; font-family: sans-serif; font-size: 12.5px; font-weight: bold; color: #000; line-height: 1.35;">
-          <p style="font-size: 9px; font-weight: 900; text-transform: uppercase; letter-spacing: 2px; color: ${NAVY}; margin: 0 0 4px 0;">Address</p>
+        <div style="text-align: right; font-family: sans-serif; font-size: 10.5px; font-weight: 600; color: #000; line-height: 1.35;">
+          <p style="font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.6px; color: ${RED}; margin: 0 0 2px 0;">Address:</p>
           ${COMPANY.addressLines.map((line) => `<p style="margin: 0;">${line}</p>`).join("")}
-          <p style="margin: 4px 0 0 0; font-weight: 800; letter-spacing: 0.4px;">Tel: ${COMPANY.tel}</p>
+          <p style="margin: 0;">Tel: ${COMPANY.tel}</p>
         </div>
       </div>
-      <div style="margin-top: 8px; height: 3px; width: 100%; background: ${NAVY};"></div>
     </div>
   `;
 }
 
-// React component for watermark (used in AuthorityToSell.tsx / PropertyIntake.tsx previews)
+// React component for watermark (used in SalesAgreement.tsx / PropertyIntake.tsx previews)
 /**
  * The faint logo behind a document.
  *
@@ -125,13 +154,13 @@ export function getPrintWatermarkHTML() {
       opacity: 0.07;
       user-select: none;
     ">
-      <img src="${window.location.origin}${logoWatermark}" alt="" style="width: 560px; max-width: 80vw; object-fit: contain; display: block;" />
+      <img src="${logoWatermark}" alt="" style="width: 560px; max-width: 80vw; object-fit: contain; display: block;" />
     </div>
   `;
 }
 
 // ─── Modern letterhead + document primitives ────────────────────────────────
-// Used by the Authority to Sell, Sales Agreement and Proforma Invoice documents.
+// Used by the Sales Agreement and Proforma Invoice documents.
 
 /**
  * Letterhead with a document title and number block on the right, for documents
@@ -293,6 +322,31 @@ export function InlineRuled({ children }: { children: ReactNode }) {
       style={{ borderBottom: RULE }}
     >
       {children || " "}
+    </span>
+  );
+}
+
+/**
+ * The document's serial, stamped on the sheet the way the number is printed on
+ * a paper book of forms: top right, unmissable, so a document can be quoted and
+ * filed by number. Each document type counts in its own run (001, 002, …) —
+ * see supabase/migrations/20261112110000_document_numbers.sql.
+ */
+export function DocumentNumber({
+  value,
+  label = "No.",
+}: {
+  value?: string | null;
+  label?: string;
+}) {
+  return (
+    <span className="shrink-0 whitespace-nowrap">
+      <span className="text-[9.5px] font-bold uppercase tracking-[0.14em] text-neutral-500">
+        {label}{" "}
+      </span>
+      <span className="text-[14px] font-black tracking-wide" style={{ color: BRAND_NAVY }}>
+        {value || "—"}
+      </span>
     </span>
   );
 }

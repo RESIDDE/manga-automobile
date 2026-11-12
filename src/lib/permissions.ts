@@ -15,11 +15,12 @@ export type PageKey =
   | "outside-vehicles"
   | "customers"
   | "sales"
-  | "authority-to-sell"
+  | "sales-agreement"
   | "performance-quotes"
   | "meetings"
   | "property-intake"
-  | "salary";
+  | "salary"
+  | "expenses";
 
 export type PermissionAction = "view" | "create" | "edit" | "delete";
 
@@ -31,11 +32,12 @@ export const ALL_PAGES: { key: PageKey; label: string; path: string }[] = [
   { key: "outside-vehicles",   label: "Outside Cars",     path: "/outside-vehicles" },
   { key: "customers",          label: "Customers",        path: "/customers" },
   { key: "sales",              label: "Sales",            path: "/sales" },
-  { key: "authority-to-sell",  label: "Auth. Form",       path: "/authority-to-sell" },
+  { key: "sales-agreement",    label: "Sales Agreement",  path: "/sales-agreement" },
   { key: "performance-quotes", label: "Proforma Invoice", path: "/performance-quotes" },
   { key: "meetings",           label: "Meetings",         path: "/meetings" },
   { key: "property-intake",    label: "Property Intake",  path: "/property-intake" },
   { key: "salary",             label: "Salary Schedule",  path: "/salary-schedule" },
+  { key: "expenses",           label: "Expenses",         path: "/expenses" },
 ];
 
 export type RolePermissions = Record<PermissionAction, PageKey[]>;
@@ -53,17 +55,18 @@ export const isUnrestricted = (role: AppRole | null): boolean =>
 // Used when the stored matrix is missing or unreadable, so a bad read degrades
 // to sane access rather than locking everybody out.
 
-// Payroll is deliberately absent from every default below: it names what each
-// member of staff earns and the account it is paid into. Only admin has it out
-// of the box, and an admin hands it to an HR role by ticking the box in
+// Payroll and expenses are deliberately absent from every default below.
+// Payroll names what each member of staff earns and the account it is paid
+// into; expenses are the company's own books. Only admin has either out of the
+// box, and an admin hands them to an HR or accounts role by ticking the box in
 // Settings — a decision somebody makes, never one inherited from a template.
 const SALES_PAGES: PageKey[] = [
   "dashboard", "vehicles", "outside-vehicles", "customers", "sales", "meetings",
-  "property-intake", "authority-to-sell", "performance-quotes",
+  "property-intake", "sales-agreement", "performance-quotes",
 ];
 const SALES_WRITE: PageKey[] = [
   "vehicles", "outside-vehicles", "customers", "sales", "property-intake",
-  "authority-to-sell", "performance-quotes",
+  "sales-agreement", "performance-quotes",
 ];
 
 export const DEFAULT_PERMISSIONS: PermissionsMap = {

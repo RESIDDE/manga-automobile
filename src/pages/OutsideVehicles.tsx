@@ -26,6 +26,7 @@ import {
 import { toast } from "sonner";
 import { exportToCSV, exportToJSON, printTable, downloadTableAsPDF } from "@/lib/exportHelpers";
 import { CustomPagination } from "@/components/CustomPagination";
+import { RecordActions } from "@/components/RecordActions";
 import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
 import { canCreate, canDelete, canEdit } from "@/lib/permissions";
@@ -60,9 +61,8 @@ const StatTile = ({ label, value, sub, tone = "text-foreground" }: {
  * earns for brokering the car.
  *
  * Built as a sibling of VehiclesList rather than a shared, prop-driven page —
- * the same call this codebase made building SalesAgreement beside
- * AuthorityToSell. The two pages share a shape but diverge on columns, tiles,
- * actions and the meaning of their figures.
+ * the same call this codebase makes elsewhere when two screens share a shape
+ * but diverge on columns, tiles, actions and the meaning of their figures.
  */
 export default function OutsideVehicles() {
   const { role } = useAuth();
@@ -525,29 +525,23 @@ export default function OutsideVehicles() {
                     </div>
                   </div>
 
-                  <div className="flex gap-1.5 pt-2 border-t border-white/5 mt-auto">
-                    <Button variant="outline" size="sm" asChild className="h-8 text-xs rounded-lg border-white/10">
-                      <Link to={`/vehicles/${v.id}`}><Eye className="h-3.5 w-3.5 mr-1.5" /> Details</Link>
-                    </Button>
-                    {hasEdit && !isSold && (
-                      <Button variant="outline" size="sm" onClick={() => setMoveId(v.id)}
-                        className="h-8 text-xs rounded-lg border-white/10">
-                        <Warehouse className="h-3.5 w-3.5 mr-1.5" /> To stand
-                      </Button>
-                    )}
-                    {hasEdit && (
-                      <Button variant="outline" size="sm" asChild className="h-8 text-xs rounded-lg border-white/10">
-                        <Link to={`/vehicles/${v.id}/edit`}><Pencil className="h-3.5 w-3.5" /></Link>
-                      </Button>
-                    )}
-                    {hasDelete && (
-                      <Button variant="ghost" size="icon" aria-label="Remove outside car"
-                        onClick={() => setDeleteId(v.id)}
-                        className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10">
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </Button>
-                    )}
-                  </div>
+                  <RecordActions
+                    menuLabel={`More actions for ${v.make} ${v.model}`}
+                    primary={[
+                      { label: "Details", icon: Eye, to: `/vehicles/${v.id}` },
+                      {
+                        label: "To stand", icon: Warehouse,
+                        onClick: () => setMoveId(v.id), show: hasEdit && !isSold,
+                      },
+                    ]}
+                    menu={[
+                      { label: "Edit car", icon: Pencil, to: `/vehicles/${v.id}/edit`, show: hasEdit },
+                      {
+                        label: "Remove outside car", icon: Trash2,
+                        onClick: () => setDeleteId(v.id), destructive: true, show: hasDelete,
+                      },
+                    ]}
+                  />
                 </div>
               </div>
             );
@@ -618,32 +612,22 @@ export default function OutsideVehicles() {
                         </span>
                       </TableCell>
                       <TableCell className="text-right px-6">
-                        <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" asChild aria-label="View vehicle"
-                            className="h-8 w-8 rounded-lg hover:bg-amber-500/10 hover:text-amber-500">
-                            <Link to={`/vehicles/${v.id}`}><Eye className="h-4 w-4" /></Link>
-                          </Button>
-                          {hasEdit && !isSold && (
-                            <Button variant="ghost" size="icon" aria-label="Move onto the stand"
-                              onClick={() => setMoveId(v.id)}
-                              className="h-8 w-8 rounded-lg hover:bg-foreground/10">
-                              <Warehouse className="h-4 w-4" />
-                            </Button>
-                          )}
-                          {hasEdit && (
-                            <Button variant="ghost" size="icon" asChild aria-label="Edit vehicle"
-                              className="h-8 w-8 rounded-lg hover:bg-foreground/10">
-                              <Link to={`/vehicles/${v.id}/edit`}><Pencil className="h-4 w-4" /></Link>
-                            </Button>
-                          )}
-                          {hasDelete && (
-                            <Button variant="ghost" size="icon" aria-label="Remove outside car"
-                              onClick={() => setDeleteId(v.id)}
-                              className="h-8 w-8 rounded-lg text-destructive hover:bg-destructive/10">
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </div>
+                        <RecordActions
+                          inline
+                          menuLabel={`More actions for ${v.make} ${v.model}`}
+                          primary={[{ label: "Details", icon: Eye, to: `/vehicles/${v.id}` }]}
+                          menu={[
+                            {
+                              label: "Move onto the stand", icon: Warehouse,
+                              onClick: () => setMoveId(v.id), show: hasEdit && !isSold,
+                            },
+                            { label: "Edit car", icon: Pencil, to: `/vehicles/${v.id}/edit`, show: hasEdit },
+                            {
+                              label: "Remove outside car", icon: Trash2, destructive: true,
+                              onClick: () => setDeleteId(v.id), show: hasDelete,
+                            },
+                          ]}
+                        />
                       </TableCell>
                     </TableRow>
                   );

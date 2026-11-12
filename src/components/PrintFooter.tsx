@@ -1,6 +1,6 @@
 import React from 'react';
 
-// For use inside React DOM trees (like AuthorityToSell.tsx)
+// For use inside React DOM trees (like SalesAgreement.tsx)
 export function PrintFooter() {
   // Footer removed as requested
   return null;
