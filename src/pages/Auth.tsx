@@ -3,56 +3,41 @@ import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ShieldCheck, Mail, Lock, User, Loader2, Phone, Eye, EyeOff } from "lucide-react";
+import { ShieldCheck, Mail, Lock, User, Loader2, Eye, EyeOff } from "lucide-react";
 import { toast } from "sonner";
 import { BrandMark, BrandLockup } from "@/components/BrandMark";
 import { logAction } from "@/lib/logger";
+import { staffEmail } from "@/lib/staff";
 
-type Mode = "login" | "register";
+type Mode = "staff" | "admin";
 
 export default function Auth() {
-  const [mode, setMode] = useState<Mode>("login");
+  const [mode, setMode] = useState<Mode>("staff");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   const [email, setEmail] = useState("");
+  const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [fullName, setFullName] = useState("");
-  const [phone, setPhone] = useState("");
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
-      const { error } = await supabase.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      await logAction("LOGIN", "Auth", null, { method: "email" });
+      const loginEmail = mode === "staff" ? staffEmail(username) : email.trim();
+      const { error } = await supabase.auth.signInWithPassword({ email: loginEmail, password });
+      if (error) {
+        throw new Error(
+          mode === "staff"
+            ? "Username or password is incorrect."
+            : error.message || "Failed to sign in. Check your credentials."
+        );
+      }
+      await logAction("LOGIN", "Auth", null, { method: mode });
       toast.success("Welcome back!");
-      // GuestGuard automatically redirects to /dashboard once user state updates
+      // GuestGuard redirects into the app once the session lands
     } catch (error: any) {
-      toast.error(error.message || "Failed to sign in. Check your credentials.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSignup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setLoading(true);
-    try {
-      const { error } = await supabase.auth.signUp({
-        email,
-        password,
-        options: {
-          data: { full_name: fullName, phone },
-        },
-      });
-      if (error) throw error;
-      await logAction("SIGNUP", "Auth", null, { name: fullName });
-      toast.success("Account created! You can now log in.");
-      setMode("login");
-    } catch (error: any) {
-      toast.error(error.message || "Failed to create account.");
+      toast.error(error.message);
     } finally {
       setLoading(false);
     }
@@ -113,21 +98,20 @@ export default function Auth() {
           </div>
 
           <div className="mb-8">
-            <h2 className="text-3xl font-extrabold text-foreground tracking-tight">
-              {mode === "login" ? "Welcome back" : "Create account"}
-            </h2>
+            <h2 className="text-3xl font-extrabold text-foreground tracking-tight">Welcome back</h2>
             <p className="text-muted-foreground mt-2 text-sm">
-              {mode === "login"
-                ? "Sign in to access the admin dashboard."
-                : "Register to get started with Manga Automobiles."}
+              {mode === "staff"
+                ? "Sign in with the username and password your admin gave you."
+                : "Administrator sign-in."}
             </p>
           </div>
 
-          {/* Tab switcher */}
+          {/* Two ways in: staff (username) and admin (email) */}
           <div className="flex p-1.5 bg-foreground/5 rounded-2xl mb-8 gap-1">
-            {(["login", "register"] as Mode[]).map((m) => (
+            {(["staff", "admin"] as Mode[]).map((m) => (
               <button
                 key={m}
+                type="button"
                 onClick={() => setMode(m)}
                 className={`flex-1 py-2.5 rounded-xl text-sm font-semibold transition-all duration-300 ${
                   mode === m
@@ -135,20 +119,35 @@ export default function Auth() {
                     : "text-muted-foreground hover:text-foreground"
                 }`}
               >
-                {m === "login" ? "Sign In" : "Register"}
+                {m === "staff" ? "Staff" : "Admin"}
               </button>
             ))}
           </div>
 
-          {/* ── Login Form ── */}
-          {mode === "login" && (
-            <form onSubmit={handleLogin} className="space-y-5">
+          <form onSubmit={handleLogin} className="space-y-5">
+            {mode === "staff" ? (
               <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Email Address</Label>
+                <Label htmlFor="login-username" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Username</Label>
+                <div className="relative">
+                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                  <Input
+                    id="login-username"
+                    required autoComplete="username" autoCapitalize="none" spellCheck={false}
+                    placeholder="e.g. ada.obi"
+                    className="pl-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-primary font-medium"
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Label htmlFor="login-email" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Admin Email</Label>
                 <div className="relative">
                   <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <Input
-                    required type="email"
+                    id="login-email"
+                    required type="email" autoComplete="email"
                     placeholder="admin@mangaautomobiles.com"
                     className="pl-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-primary font-medium"
                     value={email}
@@ -156,112 +155,43 @@ export default function Auth() {
                   />
                 </div>
               </div>
+            )}
 
-              <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Password</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    required
-                    type={showPassword ? "text" : "password"}
-                    placeholder="••••••••"
-                    className="pl-10 pr-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-primary font-medium"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
+            <div className="space-y-2">
+              <Label htmlFor="login-password" className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Password</Label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="login-password"
+                  required autoComplete="current-password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="••••••••"
+                  className="pl-10 pr-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-primary font-medium"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+                <button type="button" aria-label={showPassword ? "Hide password" : "Show password"} onClick={() => setShowPassword(!showPassword)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
+            </div>
 
-              <Button
-                disabled={loading} type="submit"
-                className="w-full h-12 mt-2 rounded-xl bg-primary hover:bg-amber-600 text-white font-bold shadow-lg shadow-primary/30 transition-all"
-              >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Sign In to Dashboard"}
-              </Button>
-            </form>
-          )}
+            <Button
+              disabled={loading} type="submit"
+              className="w-full h-12 mt-2 rounded-xl bg-primary hover:bg-amber-600 text-white font-bold shadow-lg shadow-primary/30 transition-all"
+            >
+              {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Sign In"}
+            </Button>
 
-          {/* ── Register Form ── */}
-          {mode === "register" && (
-            <form onSubmit={handleSignup} className="space-y-5">
-              <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Full Name</Label>
-                <div className="relative">
-                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    required placeholder="John Doe"
-                    className="pl-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-primary font-medium"
-                    value={fullName}
-                    onChange={(e) => setFullName(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Phone Number</Label>
-                <div className="relative">
-                  <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    required type="tel" placeholder="+234 800 000 0000"
-                    className="pl-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-primary font-medium"
-                    value={phone}
-                    onChange={(e) => setPhone(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Email Address</Label>
-                <div className="relative">
-                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    required type="email" placeholder="john@beeteeautos.com"
-                    className="pl-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-primary font-medium"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Password</Label>
-                <div className="relative">
-                  <Lock className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                  <Input
-                    required
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Min. 6 characters"
-                    className="pl-10 pr-10 h-12 rounded-xl bg-foreground/5 border-foreground/10 focus-visible:ring-primary font-medium"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                  />
-                  <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors">
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-              </div>
-
-              <Button
-                disabled={loading} type="submit"
-                className="w-full h-12 mt-2 rounded-xl bg-primary hover:bg-amber-600 text-white font-bold shadow-lg shadow-primary/30 transition-all"
-              >
-                {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : "Create Admin Account"}
-              </Button>
-
-              <p className="text-xs text-center text-muted-foreground">
-                🔒 Access is managed by your administrator. <br />
-                Contact Manga Automobiles IT if you're having trouble.
-              </p>
-            </form>
-          )}
+            <p className="text-xs text-center text-muted-foreground">
+              Accounts are created by your administrator. Forgot your password? Ask your admin.
+            </p>
+          </form>
 
           <div className="mt-10 pt-6 border-t border-foreground/5 flex items-center gap-3">
             <ShieldCheck className="h-4 w-4 text-primary shrink-0" />
             <p className="text-xs text-muted-foreground">
-              This is a secure, admin-only portal. Unauthorized access is prohibited.
+              This is a secure, staff-only portal. Unauthorized access is prohibited.
             </p>
           </div>
         </div>

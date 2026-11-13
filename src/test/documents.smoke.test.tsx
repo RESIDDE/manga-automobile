@@ -84,7 +84,7 @@ describe("Sales Agreement", () => {
 
     const address = screen.getByDisplayValue(/Shehu Shagari Way Maitama/);
     expect(address).toBeInTheDocument();
-    expect(screen.getByDisplayValue("09032216333")).toBeInTheDocument();
+    expect(screen.getByDisplayValue("08099999915")).toBeInTheDocument();
     expect(
       screen.getByText(/Seller's Information — Manga Automobiles/)
     ).toBeInTheDocument();

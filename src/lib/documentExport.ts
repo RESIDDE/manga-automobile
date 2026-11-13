@@ -28,6 +28,11 @@ export async function captureDocumentElement(
   // Same reason as printing: an undecoded logo rasterises as nothing at all.
   await waitForImages(el);
 
+  // A document of several sheets becomes a PDF of several A4 pages, one per
+  // sheet, rather than one tall page with the sheets stacked.
+  const sheets = Array.from(el.querySelectorAll<HTMLElement>(".print-document-page"));
+  if (format === "pdf" && sheets.length > 1) return capturePagedPdf(sheets);
+
   const html2canvas = await loadHtml2Canvas();
   const canvas = await html2canvas(el, {
     scale: 2,
@@ -62,6 +67,38 @@ export async function captureDocumentElement(
       quality
     );
   });
+}
+
+/** A4 in points. */
+const A4_W = 595.28;
+const A4_H = 841.89;
+
+async function capturePagedPdf(sheets: HTMLElement[]): Promise<Blob> {
+  const html2canvas = await loadHtml2Canvas();
+  const jsPDF = await loadJsPDF();
+  const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4", compress: true });
+
+  for (let i = 0; i < sheets.length; i++) {
+    const sheet = sheets[i];
+    const canvas = await html2canvas(sheet, {
+      scale: 2,
+      useCORS: true,
+      logging: false,
+      backgroundColor: "#ffffff",
+      windowWidth: sheet.scrollWidth,
+      windowHeight: sheet.scrollHeight,
+    });
+    if (i > 0) pdf.addPage("a4", "portrait");
+    // Fill the page width; a sheet that ran long is shrunk to fit the height
+    let w = A4_W;
+    let h = (canvas.height * w) / canvas.width;
+    if (h > A4_H) {
+      h = A4_H;
+      w = (canvas.width * h) / canvas.height;
+    }
+    pdf.addImage(canvas.toDataURL("image/jpeg", 0.95), "JPEG", (A4_W - w) / 2, 0, w, h);
+  }
+  return pdf.output("blob");
 }
 
 /** Triggers a browser download for a generated document blob. */

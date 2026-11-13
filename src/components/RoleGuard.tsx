@@ -3,8 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
-import { usePermissions } from "@/hooks/usePermissions";
-import { canAccess, firstAccessiblePath, isUnrestricted, type PageKey } from "@/lib/permissions";
+import { usePermissions, useFeature } from "@/hooks/usePermissions";
+import { canAccess, firstAccessiblePath, isDsa, isUnrestricted, type FeatureKey, type PageKey } from "@/lib/permissions";
 
 function Resolving() {
   return (
@@ -68,4 +68,23 @@ export function AdminGuard({ children }: { children: React.ReactNode }) {
   // Settings is not theirs: put them back in their own app
   const fallback = firstAccessiblePath(role, permissions);
   return <Navigate to={fallback ?? "/no-access"} replace />;
+}
+
+/** Messages (and any other per-role feature): off for this role → back to their app. */
+export function FeatureGuard({ feature, children }: { feature: FeatureKey; children: React.ReactNode }) {
+  const { role } = useAuth();
+  const { permissions } = usePermissions();
+  const { allowed, isLoading } = useFeature(feature);
+  if (isLoading) return <Resolving />;
+  if (!allowed) return <Navigate to={firstAccessiblePath(role, permissions) ?? "/no-access"} replace />;
+  return <>{children}</>;
+}
+
+/** The Direct Sales Agent's page. Admin may open it too, to see what agents see. */
+export function DsaGuard({ children }: { children: React.ReactNode }) {
+  const { role, isLoading } = useAuth();
+  const { permissions } = usePermissions();
+  if (isLoading || !role) return <Resolving />;
+  if (isDsa(role) || isUnrestricted(role)) return <>{children}</>;
+  return <Navigate to={firstAccessiblePath(role, permissions) ?? "/no-access"} replace />;
 }

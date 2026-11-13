@@ -7,7 +7,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/AppLayout";
 import { PrintFitSync } from "@/components/PrintFitSync";
-import { RoleGuard, AdminGuard } from "@/components/RoleGuard";
+import { RoleGuard, AdminGuard, FeatureGuard, DsaGuard } from "@/components/RoleGuard";
 import { AuthGuard, GuestGuard } from "@/components/AuthGuard";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import { usePermissions, PermissionsRealtimeSync } from "@/hooks/usePermissions";
@@ -39,6 +39,8 @@ const PropertyIntake = lazy(() => import("./pages/PropertyIntake"));
 const SalarySchedule = lazy(() => import("./pages/SalarySchedule"));
 const Expenses = lazy(() => import("./pages/Expenses"));
 const Settings = lazy(() => import("./pages/Settings"));
+const Messages = lazy(() => import("./pages/Messages"));
+const AvailableCars = lazy(() => import("./pages/AvailableCars"));
 const PublicBooking = lazy(() => import("./pages/PublicBooking"));
 const SignCustomer = lazy(() => import("./pages/SignCustomer"));
 const SignSale = lazy(() => import("./pages/SignSale"));
@@ -118,6 +120,10 @@ function AppRoutes() {
             <Route path="/property-intake"   element={<RoleGuard page="property-intake"><PropertyIntake /></RoleGuard>} />
             <Route path="/salary-schedule"   element={<RoleGuard page="salary"><SalarySchedule /></RoleGuard>} />
             <Route path="/expenses"          element={<RoleGuard page="expenses"><Expenses /></RoleGuard>} />
+            {/* Direct Sales Agents: available cars at the office price, nothing else */}
+            <Route path="/available-cars"    element={<DsaGuard><AvailableCars /></DsaGuard>} />
+            {/* On for every role unless switched off in Settings → Permissions */}
+            <Route path="/messages"          element={<FeatureGuard feature="messages"><Messages /></FeatureGuard>} />
             <Route path="/settings"          element={<AdminGuard><Settings /></AdminGuard>} />
             <Route path="/no-access"         element={<Unauthorized />} />
             <Route path="/unauthorized"      element={<Unauthorized />} />

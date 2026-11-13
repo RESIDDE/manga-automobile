@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
@@ -18,11 +18,17 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  ChevronLeft, ChevronRight, CopyPlus, Download, Layers, Pencil, PlusCircle,
+  ChevronLeft, ChevronRight, CopyPlus, Download, FileSpreadsheet, FileText, Layers, Pencil, PlusCircle,
   Receipt, Search, Trash2, Wallet, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { exportToCSV } from "@/lib/exportHelpers";
+import { DocumentToolbar } from "@/components/DocumentToolbar";
+import { PrintSheet } from "@/components/PrintSheet";
+import { ExpenseSheetDocument } from "@/components/ExpenseSheetDocument";
+import {
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
 import { canCreate, canDelete, canEdit } from "@/lib/permissions";
@@ -95,7 +101,7 @@ const StatTile = ({ label, value, sub, tone = "text-foreground" }: {
  * never drift apart from each other or from the entries they describe.
  */
 export default function Expenses() {
-  const { user, role } = useAuth();
+  const { user, role, profile } = useAuth();
   const { permissions } = usePermissions();
   const mayCreate = canCreate(role, PAGE_KEY, permissions);
   const mayEdit = canEdit(role, PAGE_KEY, permissions);
@@ -106,6 +112,8 @@ export default function Expenses() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [draft, setDraft] = useState<Draft>(emptyDraft());
   const [deleteGroup, setDeleteGroup] = useState<ExpenseGroup | null>(null);
+  const [showSheet, setShowSheet] = useState(false);
+  const sheetRef = useRef<HTMLDivElement>(null);
 
   const queryClient = useQueryClient();
 
@@ -326,6 +334,25 @@ export default function Expenses() {
 
   const canSave = !!draft.name.trim() && !saveMutation.isPending;
 
+  // ── Letterhead statement: preview, PDF / PNG / JPEG, print ────────────────
+  if (showSheet) {
+    return (
+      <div className="animate-fade-in">
+        <DocumentToolbar
+          documentRef={sheetRef}
+          filename={`expenses-${period}`}
+          entity={ENTITY}
+          backLabel="Back to Expenses"
+          accentClass="bg-rose-500 hover:bg-rose-600 shadow-rose-500/20"
+          onBack={() => setShowSheet(false)}
+        />
+        <PrintSheet ref={sheetRef}>
+          <ExpenseSheetDocument period={period} groups={groups} preparedBy={profile?.display_name ?? null} />
+        </PrintSheet>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 animate-fade-in">
       {/* ── Header ──────────────────────────────────────────────────────── */}
@@ -370,10 +397,21 @@ export default function Expenses() {
             </Button>
           </div>
 
-          <Button variant="outline" onClick={exportMonth}
-            className="rounded-xl border-white/10 hover:bg-white/5">
-            <Download className="h-4 w-4 mr-2" /> Export
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="rounded-xl border-white/10 hover:bg-white/5">
+                <Download className="h-4 w-4 mr-2" /> Export
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="glass-panel border-white/10 rounded-xl">
+              <DropdownMenuItem onClick={() => setShowSheet(true)} className="cursor-pointer">
+                <FileText className="h-4 w-4 mr-2" /> Statement — PDF, PNG, JPEG or print
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={exportMonth} className="cursor-pointer">
+                <FileSpreadsheet className="h-4 w-4 mr-2" /> Spreadsheet (CSV)
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
           {mayCreate && copyFrom && groups.length === 0 && (
             <Button

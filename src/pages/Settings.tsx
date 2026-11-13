@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
@@ -20,12 +21,14 @@ import {
 } from "lucide-react";
 import {
   ALL_PAGES, DEFAULT_PERMISSIONS, PERMISSION_ACTIONS, allRoleKeys,
+  ALL_FEATURES, hasFeature, featuresFor, DSA_ROLE, type FeatureKey,
   emptyRolePermissions, isUnrestricted, roleLabel,
   type AppRole, type PageKey, type PermissionAction, type PermissionsMap,
 } from "@/lib/permissions";
 import { usePermissions } from "@/hooks/usePermissions";
 import { CustomPagination } from "@/components/CustomPagination";
 import { logAction, describeLog } from "@/lib/logger";
+import { normalizeUsername, isValidUsername, staffEmail, suggestUsername, passwordProblem } from "@/lib/staff";
 
 type Tab = "team" | "permissions" | "audit" | "system";
 
@@ -61,7 +64,11 @@ export default function Settings() {
   const [tab, setTab] = useState<Tab>("team");
   const {
     permissions: livePermissions, roleLabels, savePermissions, saveRoleLabels, isSaving,
+    featureAccess, saveFeatureAccess, deleteRole,
   } = usePermissions();
+  const [roleToDelete, setRoleToDelete] = useState<string | null>(null);
+  const [moveMembersTo, setMoveMembersTo] = useState("");
+  const [deletingRole, setDeletingRole] = useState(false);
   // Edits land in local state so several boxes can be ticked before saving
   const [localPermissions, setLocalPermissions] = useState<PermissionsMap | null>(null);
   const [permDirty, setPermDirty] = useState(false);
@@ -76,7 +83,8 @@ export default function Settings() {
 
   // ── Invite User State ──────────────────────────────────────────────────────
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [inviteForm, setInviteForm] = useState({ email: "", displayName: "", password: "", role: "mechanic" });
+  const BLANK_INVITE = { kind: "staff" as "staff" | "admin", email: "", username: "", displayName: "", password: "", role: "mechanic" };
+  const [inviteForm, setInviteForm] = useState(BLANK_INVITE);
   const [inviting, setInviting] = useState(false);
 
   // ── Transfer Super Admin State ─────────────────────────────────────────────
@@ -233,49 +241,87 @@ export default function Settings() {
 
   // ── Invite New User ────────────────────────────────────────────────────────
   const handleInvite = async () => {
-    if (!inviteForm.email || !inviteForm.password || !inviteForm.displayName) {
+    const isStaff = inviteForm.kind === "staff";
+    const username = normalizeUsername(inviteForm.username);
+    if (!inviteForm.displayName.trim() || !inviteForm.password || (isStaff ? !username : !inviteForm.email)) {
       toast.error("Please fill in all fields");
       return;
     }
-    if (inviteForm.password.length < 6) {
-      toast.error("Password must be at least 6 characters");
+    if (isStaff && !isValidUsername(username)) {
+      toast.error("Username must be 3–32 letters, numbers, dots or dashes");
+      return;
+    }
+    if (!assignableRoles.includes(inviteForm.role)) {
+      toast.error("Choose a role for this person");
+      return;
+    }
+    const weak = passwordProblem(inviteForm.password);
+    if (weak) {
+      toast.error(weak);
       return;
     }
     setInviting(true);
     try {
-      // Use the isolated client so super admin's session is untouched
+      // One password, one person: refuse before any account is created
+      const { data: available, error: availErr } = await (supabase as any)
+        .rpc("staff_password_available", { pw: inviteForm.password });
+      if (availErr) throw availErr;
+      if (available === false) throw new Error("That password is already used by another staff member. Choose a different one.");
+
+      if (isStaff) {
+        const { data: taken } = await (supabase as any)
+          .from("profiles").select("id").ilike("username", username).maybeSingle();
+        if (taken) throw new Error(`The username "${username}" is already taken`);
+      }
+
+      // The isolated client keeps the admin's own session untouched
       const { data: signUpData, error: signUpError } = await anonClient.auth.signUp({
-        email: inviteForm.email,
+        email: isStaff ? staffEmail(username) : inviteForm.email.trim(),
         password: inviteForm.password,
-        options: { data: { display_name: inviteForm.displayName } },
+        options: {
+          data: {
+            display_name: inviteForm.displayName.trim(),
+            ...(isStaff ? { username } : {}),
+          },
+        },
       });
       if (signUpError) throw signUpError;
 
       const newUserId = signUpData.user?.id;
       if (!newUserId) throw new Error("User creation failed — no ID returned.");
 
-      // Create profile
-      await (supabase as any).from("profiles").upsert({
+      const { error: profileErr } = await (supabase as any).from("profiles").upsert({
         id: newUserId,
-        display_name: inviteForm.displayName,
+        display_name: inviteForm.displayName.trim(),
+        username: isStaff ? username : null,
+        account_type: isStaff ? "staff" : "admin",
       }, { onConflict: "id" });
+      if (profileErr) throw profileErr;
 
-      // Assign role
-      await (supabase as any).from("user_roles").upsert({
+      const { error: roleErr } = await (supabase as any).from("user_roles").upsert({
         user_id: newUserId,
         role: inviteForm.role,
       }, { onConflict: "user_id" });
+      if (roleErr) throw roleErr;
+
+      const { error: pwErr } = await (supabase as any)
+        .rpc("register_staff_password", { target: newUserId, pw: inviteForm.password });
+      if (pwErr) throw pwErr;
 
       await logAction("INVITE", "users", newUserId, {
-        invited_email: inviteForm.email,
+        ...(isStaff ? { username } : { invited_email: inviteForm.email }),
         assigned_role: inviteForm.role,
         invited_name: inviteForm.displayName,
       });
 
       queryClient.invalidateQueries({ queryKey: ["users-roles"] });
-      toast.success(`✅ Account created for ${inviteForm.displayName}! They can now log in with the credentials you set.`);
+      toast.success(
+        isStaff
+          ? `Account created for ${inviteForm.displayName}. Username: ${username}`
+          : `Account created for ${inviteForm.displayName}.`
+      );
       setInviteOpen(false);
-      setInviteForm({ email: "", displayName: "", password: "", role: "mechanic" });
+      setInviteForm(BLANK_INVITE);
     } catch (err: any) {
       toast.error(err.message || "Failed to create user");
     } finally {
@@ -316,6 +362,18 @@ export default function Settings() {
   };
 
   // ── Permissions helpers ────────────────────────────────────────────────────
+  const toggleFeature = async (r: string, feature: FeatureKey, on: boolean) => {
+    const current = featuresFor(r, featureAccess);
+    const next = { ...featureAccess, [r]: on ? [...new Set([...current, feature])] : current.filter((f) => f !== feature) };
+    try {
+      await saveFeatureAccess(next);
+      await logAction("PERMISSION_CHANGE", "app_settings", null, { role: r, feature, enabled: on });
+      toast.success(`${feature === "messages" ? "Messages" : "Tags"} ${on ? "enabled" : "disabled"} for ${roleLabel(r, roleLabels)}`);
+    } catch (e: any) {
+      toast.error(e.message || "Couldn't save");
+    }
+  };
+
   const togglePerm = (r: string, page: PageKey, action: PermissionAction) => {
     setLocalPermissions((prev) => {
       const base = prev ?? livePermissions;
@@ -395,6 +453,48 @@ export default function Settings() {
     }
   };
 
+  /** Moves anyone holding the role to another one, then removes the role. */
+  const confirmDeleteRole = async () => {
+    if (!roleToDelete) return;
+    const members = usersData.filter((u: any) => u.role === roleToDelete);
+    if (members.length && !moveMembersTo) {
+      toast.error("Choose which role their members move to");
+      return;
+    }
+    if (permDirty) {
+      toast.error("Save or discard your unsaved permission changes first");
+      return;
+    }
+    setDeletingRole(true);
+    try {
+      if (members.length) {
+        const { error } = await (supabase as any)
+          .from("user_roles").update({ role: moveMembersTo }).eq("role", roleToDelete);
+        if (error) throw error;
+      }
+      await deleteRole({ role: roleToDelete, current: livePermissions });
+      // Tidy the role's label and collaboration entry; neither matters if it fails
+      const { [roleToDelete]: _l, ...labels } = roleLabels;
+      const { [roleToDelete]: _f, ...features } = featureAccess;
+      await Promise.allSettled([saveRoleLabels(labels), saveFeatureAccess(features)]);
+      await logAction("PERMISSION_CHANGE", "app_settings", "permissions", {
+        deleted_role: roleToDelete, moved_members: members.length, moved_to: moveMembersTo || null,
+      });
+      queryClient.invalidateQueries({ queryKey: ["users-roles"] });
+      toast.success(
+        `Role "${roleLabel(roleToDelete, roleLabels)}" deleted` +
+        (members.length ? ` — ${members.length} member${members.length === 1 ? "" : "s"} moved to ${roleLabel(moveMembersTo, roleLabels)}` : "")
+      );
+      setRoleToDelete(null);
+      setRenameRole(null);
+      setMoveMembersTo("");
+    } catch (e: any) {
+      toast.error(e?.message || "Failed to delete the role");
+    } finally {
+      setDeletingRole(false);
+    }
+  };
+
   const teamPageCount = Math.max(1, Math.ceil(usersData.length / teamPageSize));
   const safeTeamPage = Math.min(teamPage, teamPageCount - 1);
   const pagedUsers = usersData.slice(safeTeamPage * teamPageSize, (safeTeamPage + 1) * teamPageSize);
@@ -405,7 +505,7 @@ export default function Settings() {
 
   const matrixRoles = allRoleKeys(permissions);
   /** Roles that can be assigned to a person. Super admin is claimed or transferred. */
-  const assignableRoles = matrixRoles.filter((r) => r !== "super_admin");
+  const assignableRoles = [...matrixRoles.filter((r) => r !== "super_admin"), DSA_ROLE];
 
   const RoleOptions = ({ includeSuperAdmin = false }: { includeSuperAdmin?: boolean }) => (
     <>
@@ -519,7 +619,10 @@ export default function Settings() {
                             {rc.icon}{rc.label}
                           </span>
                         </h3>
-                        <p className="text-sm text-muted-foreground">{profile?.phone || "No phone on record"}</p>
+                        <p className="text-sm text-muted-foreground">
+                          {profile?.username ? <span className="font-mono">@{profile.username}</span> : "Admin (email login)"}
+                          {profile?.phone ? ` · ${profile.phone}` : ""}
+                        </p>
                       </div>
                     </div>
 
@@ -606,7 +709,9 @@ export default function Settings() {
             <span className="font-semibold text-foreground">Edit</span>,{" "}
             <span className="font-semibold text-foreground">Delete</span>. Delete is deliberate — it is never
             implied by Edit. <span className="text-amber-400 font-semibold">Admin</span> always has full access and
-            cannot be locked out.
+            cannot be locked out. <span className="font-semibold text-foreground">Direct Sales Agent</span> is a fixed role and is
+            not in this table: it only ever sees available cars (stand and outside) at the office price — never cost
+            prices, owners or contacts.
           </p>
 
           <div className="overflow-x-auto">
@@ -623,7 +728,7 @@ export default function Settings() {
                           type="button"
                           onClick={() => { setRenameRole(r); setRenameValue(roleLabel(r, roleLabels)); }}
                           className={`inline-flex items-center gap-1 text-sm font-bold ${rc?.color ?? "text-foreground"} hover:underline`}
-                          title="Rename this role"
+                          title={locked ? "Rename this role" : "Rename or delete this role"}
                         >
                           {rc?.icon ?? <User className="w-3.5 h-3.5" />}
                           {roleLabel(r, roleLabels)}
@@ -689,6 +794,53 @@ export default function Settings() {
             </table>
           </div>
 
+          {/* ── Collaboration: chat and tags, per role ── */}
+          <div className="mt-8 pt-6 border-t border-white/5">
+            <h3 className="font-bold text-sm">Collaboration</h3>
+            <p className="text-xs text-muted-foreground mt-1 mb-4">
+              Chat and tags are on for every role by default. Changes save immediately. People keep receiving tags even if they can't send them.
+            </p>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr>
+                    <th className="text-left text-xs font-semibold text-muted-foreground pb-3 pr-6">Feature</th>
+                    {[...matrixRoles, DSA_ROLE].map((r) => (
+                      <th key={r} className="text-center text-xs font-semibold text-muted-foreground pb-3 px-3">
+                        {roleLabel(r, roleLabels)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {ALL_FEATURES.map((f) => (
+                    <tr key={f.key} className="border-t border-white/5">
+                      <td className="py-3 pr-6">
+                        <p className="text-sm font-medium">{f.label}</p>
+                        <p className="text-[11px] text-muted-foreground">{f.hint}</p>
+                      </td>
+                      {[...matrixRoles, DSA_ROLE].map((r) => {
+                        const locked = isUnrestricted(r);
+                        const on = hasFeature(r, f.key, featureAccess);
+                        return (
+                          <td key={r} className="py-3 px-3 text-center">
+                            <Switch
+                              checked={on}
+                              disabled={locked}
+                              aria-label={`${f.label} for ${roleLabel(r, roleLabels)}`}
+                              title={locked ? "Admin always has access" : undefined}
+                              onCheckedChange={(v) => toggleFeature(r, f.key, v)}
+                            />
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
           <div className="mt-6 pt-5 border-t border-white/5 flex flex-wrap items-end gap-3">
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Create a custom role</Label>
@@ -730,12 +882,76 @@ export default function Settings() {
               Only the label changes. The role key stored on each user stays the same.
             </p>
           </div>
+          <DialogFooter className="sm:justify-between gap-2">
+            {renameRole && !isUnrestricted(renameRole) ? (
+              <Button
+                variant="ghost"
+                onClick={() => { setRoleToDelete(renameRole); setMoveMembersTo(""); }}
+                className="rounded-xl text-destructive hover:text-destructive hover:bg-destructive/10"
+              >
+                <Trash2 className="w-4 h-4 mr-1.5" /> Delete role
+              </Button>
+            ) : <span />}
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setRenameRole(null)} className="rounded-xl border-white/10">
+                Cancel
+              </Button>
+              <Button onClick={saveRoleName} className="rounded-xl bg-violet-500 hover:bg-violet-600 text-white">
+                Save name
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete a role — its members must land somewhere first */}
+      <Dialog open={!!roleToDelete} onOpenChange={(open) => !open && !deletingRole && setRoleToDelete(null)}>
+        <DialogContent className="rounded-3xl glass-panel border-white/10 max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Trash2 className="w-5 h-5" /> Delete "{roleToDelete ? roleLabel(roleToDelete, roleLabels) : ""}"?
+            </DialogTitle>
+          </DialogHeader>
+          {(() => {
+            const members = roleToDelete ? usersData.filter((u: any) => u.role === roleToDelete) : [];
+            const targets = assignableRoles.filter((r) => r !== roleToDelete);
+            return (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  The role and all its page and collaboration permissions are removed.
+                  You can create a role with the same name again later, starting with no access.
+                </p>
+                {members.length > 0 ? (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                      {members.length} member{members.length === 1 ? " has" : "s have"} this role — move them to
+                    </Label>
+                    <Select value={moveMembersTo} onValueChange={setMoveMembersTo}>
+                      <SelectTrigger className="rounded-xl h-11 bg-background/50 border-white/10">
+                        <SelectValue placeholder="Choose a role…" />
+                      </SelectTrigger>
+                      <SelectContent className="glass-panel rounded-xl">
+                        {targets.map((r) => (
+                          <SelectItem key={r} value={r} className="rounded-lg">{roleLabel(r, roleLabels)}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-[11px] text-muted-foreground">
+                      {members.map((m: any) => m.profile?.display_name || "Unnamed").join(", ")}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-sm">Nobody has this role.</p>
+                )}
+              </div>
+            );
+          })()}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setRenameRole(null)} className="rounded-xl border-white/10">
+            <Button variant="outline" disabled={deletingRole} onClick={() => setRoleToDelete(null)} className="rounded-xl border-white/10">
               Cancel
             </Button>
-            <Button onClick={saveRoleName} className="rounded-xl bg-violet-500 hover:bg-violet-600 text-white">
-              Save name
+            <Button variant="destructive" disabled={deletingRole} onClick={confirmDeleteRole} className="rounded-xl">
+              {deletingRole ? "Deleting…" : "Delete role"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -869,7 +1085,7 @@ export default function Settings() {
           <div className="p-6 border-b border-white/5 bg-foreground/5">
             <DialogHeader>
               <DialogTitle className="text-xl font-bold flex items-center gap-2">
-                <UserPlus className="h-5 w-5 text-amber-400" /> Invite New User
+                <UserPlus className="h-5 w-5 text-amber-400" /> Add Team Member
               </DialogTitle>
               <p className="text-sm text-muted-foreground mt-1">
                 Create the account and set the password. Share the credentials with the new team member afterward.
@@ -877,35 +1093,68 @@ export default function Settings() {
             </DialogHeader>
           </div>
           <div className="p-6 space-y-4">
+            <div className="flex p-1 bg-foreground/5 rounded-xl gap-1">
+              {(["staff", "admin"] as const).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setInviteForm({ ...inviteForm, kind: k, role: k === "admin" ? "admin" : "mechanic" })}
+                  className={`flex-1 py-2 rounded-lg text-xs font-bold transition-colors ${
+                    inviteForm.kind === k ? "bg-amber-500 text-white" : "text-muted-foreground hover:text-foreground"
+                  }`}
+                >
+                  {k === "staff" ? "Staff (username)" : "Admin (email)"}
+                </button>
+              ))}
+            </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Full Name</Label>
               <Input
                 placeholder="e.g. John Doe"
                 className="rounded-xl h-11 bg-background/50 border-white/10 focus-visible:ring-amber-500"
                 value={inviteForm.displayName}
-                onChange={(e) => setInviteForm({ ...inviteForm, displayName: e.target.value })}
+                onChange={(e) => {
+                  const displayName = e.target.value;
+                  // Suggest a username until admin types their own
+                  const auto = inviteForm.username === suggestUsername(inviteForm.displayName);
+                  setInviteForm({ ...inviteForm, displayName, username: auto ? suggestUsername(displayName) : inviteForm.username });
+                }}
               />
             </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Address</Label>
-              <Input
-                type="email"
-                placeholder="user@example.com"
-                className="rounded-xl h-11 bg-background/50 border-white/10 focus-visible:ring-amber-500"
-                value={inviteForm.email}
-                onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-              />
-            </div>
+            {inviteForm.kind === "staff" ? (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Username</Label>
+                <Input
+                  placeholder="e.g. john.doe"
+                  autoCapitalize="none" spellCheck={false}
+                  className="rounded-xl h-11 bg-background/50 border-white/10 focus-visible:ring-amber-500"
+                  value={inviteForm.username}
+                  onChange={(e) => setInviteForm({ ...inviteForm, username: normalizeUsername(e.target.value) })}
+                />
+                <p className="text-xs text-muted-foreground">They sign in on the Staff tab with this username. No email needed.</p>
+              </div>
+            ) : (
+              <div className="space-y-1.5">
+                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Email Address</Label>
+                <Input
+                  type="email"
+                  placeholder="admin@example.com"
+                  className="rounded-xl h-11 bg-background/50 border-white/10 focus-visible:ring-amber-500"
+                  value={inviteForm.email}
+                  onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
+                />
+              </div>
+            )}
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Set Password</Label>
               <Input
                 type="password"
-                placeholder="Min. 6 characters"
+                placeholder="Min. 8 characters, letters and numbers"
                 className="rounded-xl h-11 bg-background/50 border-white/10 focus-visible:ring-amber-500"
                 value={inviteForm.password}
                 onChange={(e) => setInviteForm({ ...inviteForm, password: e.target.value })}
               />
-              <p className="text-xs text-muted-foreground">You're setting this password. Share it securely with the user.</p>
+              <p className="text-xs text-muted-foreground">Each person needs their own password — one already given to someone else is refused.</p>
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Assign Role</Label>
@@ -924,7 +1173,7 @@ export default function Settings() {
               Cancel
             </Button>
             <Button onClick={handleInvite} disabled={inviting} className="bg-amber-500 hover:bg-amber-600 text-white rounded-xl shadow-lg shadow-amber-500/20">
-              {inviting ? "Creating Account..." : "Create & Invite"}
+              {inviting ? "Creating Account..." : "Create Account"}
             </Button>
           </DialogFooter>
         </DialogContent>

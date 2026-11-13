@@ -101,5 +101,8 @@ export default {
       },
     },
   },
+  // Hover styles only where a real mouse can hover. On touch, a tapped
+  // element otherwise keeps its hover look until something else is tapped.
+  future: { hoverOnlyWhenSupported: true },
   plugins: [require("tailwindcss-animate")],
 } satisfies Config;

@@ -9,6 +9,12 @@ const CUSTOMERS = [{ id: "c1", name: "Esther Howard" }, { id: "c2", name: "Jacob
 vi.mock("@/integrations/supabase/client", () => ({
   supabase: {
     auth: { signOut: vi.fn(async () => ({ error: null })) },
+    // Realtime used by the chat/notification sync in the layout
+    channel: () => {
+      const ch: any = { on: () => ch, subscribe: () => ch };
+      return ch;
+    },
+    removeChannel: () => {},
     from: () => ({
       select: () => ({
         order: () => ({ limit: async () => ({ data: CUSTOMERS, error: null }) }),

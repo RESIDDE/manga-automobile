@@ -235,7 +235,7 @@ function ConsignmentDocument({ data }: { data: ConsignmentForm }) {
             <p>
               <span className="font-bold">4. WITHDRAWAL BEFORE SALE.</span> In the event the Owner decides
               to take his/her car back before it is sold, after <InlineRuled>{days} days</InlineRuled> of
-              display, the Owner must pay the office the sum of{" "}
+              display, the Owner should pay the office the sum of{" "}
               <span className="font-bold">{formatNaira(charge)} ({numberToWords(charge)})</span>{" "}
               as service / display charge.
             </p>
@@ -246,6 +246,9 @@ function ConsignmentDocument({ data }: { data: ConsignmentForm }) {
                 <li>
                   The Owner confirms that the vehicle is his/her lawful property and is free from any
                   dispute, lien or encumbrance.
+                </li>
+                <li>
+                  Upon signing out the vehicle, the Owner should contact the C.E.O for approval.
                 </li>
                 <li>
                   The Owner shall not sell the vehicle privately while it is on display at{" "}

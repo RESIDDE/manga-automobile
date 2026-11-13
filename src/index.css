@@ -180,6 +180,11 @@
     break-inside: avoid;
     page-break-inside: avoid;
   }
+  /* A document made of several sheets: each sheet starts a fresh sheet of paper */
+  .print-document-page + .print-document-page {
+    break-before: page;
+    page-break-before: always;
+  }
   .print-pages-container {
     display: block !important;
     gap: 0 !important;
@@ -266,3 +271,63 @@
   }
 }
 
+
+/* ─── Native app feel ──────────────────────────────────────────────────────
+   The platform-level tells that make a web app feel like a website on a
+   phone. Each rule says why it is here. */
+@layer base {
+  html {
+    /* No grey flash over whatever was tapped; buttons have their own :active */
+    -webkit-tap-highlight-color: transparent;
+    /* No font inflation when the phone turns to landscape */
+    -webkit-text-size-adjust: 100%;
+    /* The app scrolls inside its own panes: no pull-to-refresh, no page bounce */
+    overscroll-behavior: none;
+  }
+  body {
+    overscroll-behavior: none;
+  }
+
+  /* Tap fires at once, without the double-tap-to-zoom wait */
+  button, a, [role="button"], [role="menuitem"], [role="tab"], label, summary {
+    touch-action: manipulation;
+  }
+
+  /* A long press on a control must not select its label or pop the callout.
+     Content text (names, numbers, addresses) stays selectable. */
+  button, [role="button"], [role="menuitem"], [role="tab"], nav a {
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+  }
+
+  /* iOS zooms into any field under 16px and never zooms back out */
+  @media (pointer: coarse) {
+    input, textarea, select {
+      font-size: 16px !important;
+    }
+  }
+}
+
+/* Scrolling panes keep their own bounce without dragging the page behind */
+main, [role="dialog"], [data-radix-scroll-area-viewport] {
+  overscroll-behavior: contain;
+}
+
+/* Installed app (home screen / desktop window): nothing should look like a
+   browser page. */
+@media (display-mode: standalone) {
+  body {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  /* …but anything people read or copy stays selectable */
+  main, input, textarea, [contenteditable="true"], .print-document-page {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+}
+
+/* Screen edges: notch / Dynamic Island at the top, home bar at the bottom */
+.safe-top { padding-top: env(safe-area-inset-top, 0px); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }

@@ -4,16 +4,18 @@ import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard, Car, Users, FileSignature, MapPinned,
   Crown, Calendar, Building2, Search, ChevronsLeft, ChevronsRight,
-  ChevronDown, Plus, LogOut, Wallet, Receipt,
+  ChevronDown, Plus, LogOut, Wallet, Receipt, MessageSquare, MonitorDown,
 } from "lucide-react";
 import { NairaIcon } from "@/components/NairaIcon";
 import { NavLink } from "@/components/NavLink";
 import { CommandPalette } from "@/components/CommandPalette";
 import { BrandMark, BrandLockup } from "@/components/BrandMark";
 import { useAuth } from "@/hooks/useAuth";
-import { usePermissions } from "@/hooks/usePermissions";
+import { usePermissions, useFeature } from "@/hooks/usePermissions";
+import { useUnreadChatCount } from "@/hooks/useCollab";
+import { useInstallPrompt } from "@/lib/pwa";
 import { supabase } from "@/integrations/supabase/client";
-import { getAccessiblePages, type AppRole, type PageKey } from "@/lib/permissions";
+import { DSA_HOME, getAccessiblePages, isDsa, type AppRole, type PageKey } from "@/lib/permissions";
 import {
   Sidebar, SidebarContent, SidebarFooter, SidebarHeader, useSidebar,
 } from "@/components/ui/sidebar";
@@ -94,6 +96,9 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [expanded, setExpanded] = useState<string[]>([]);
+  const unreadChats = useUnreadChatCount();
+  const { canInstall, install } = useInstallPrompt();
+  const { allowed: canChat } = useFeature("messages");
 
   const accessible = getAccessiblePages(role as AppRole | null, permissions);
   const isSuperAdmin = role === "super_admin";
@@ -305,6 +310,38 @@ export function AppSidebar() {
             })}
           </nav>
 
+          {/* ── Direct Sales Agent: their one page ──────────────────────── */}
+          {isDsa(role as AppRole | null) && (
+            <NavLink
+              to={DSA_HOME}
+              title="Available Cars"
+              className={cn(ROW, ROW_IDLE, collapsed && "h-10 w-10 justify-center self-center px-0")}
+              activeClassName={ROW_ACTIVE}
+            >
+              <Car className="h-[18px] w-[18px] shrink-0" />
+              {!collapsed && <span className="flex-1 truncate">Available Cars</span>}
+            </NavLink>
+          )}
+
+          {/* ── Messages: per-role, on by default ─────────────────────────── */}
+          {canChat && <NavLink
+            to="/messages"
+            title="Messages"
+            className={cn(ROW, ROW_IDLE, "relative", collapsed && "h-10 w-10 justify-center self-center px-0")}
+            activeClassName={ROW_ACTIVE}
+          >
+            <MessageSquare className="h-[18px] w-[18px] shrink-0" />
+            {!collapsed && <span className="flex-1 truncate">Messages</span>}
+            {unreadChats > 0 && (
+              <span className={cn(
+                "min-w-[18px] h-[18px] px-1 rounded-full bg-primary text-primary-foreground text-[10px] font-bold grid place-items-center",
+                collapsed && "absolute -top-1 -right-1",
+              )}>
+                {unreadChats > 99 ? "99+" : unreadChats}
+              </span>
+            )}
+          </NavLink>}
+
           {/* ── Recent customers ─────────────────────────────────────── */}
           {accessible.includes("customers") && customers.length > 0 && (
             <>
@@ -372,7 +409,12 @@ export function AppSidebar() {
                   <Crown className="mr-2 h-4 w-4 text-amber-500" /> Settings
                 </DropdownMenuItem>
               )}
-              {isSuperAdmin && <DropdownMenuSeparator />}
+              {canInstall && (
+                <DropdownMenuItem onClick={install} className="rounded-lg cursor-pointer font-medium">
+                  <MonitorDown className="mr-2 h-4 w-4" /> Install app
+                </DropdownMenuItem>
+              )}
+              {(isSuperAdmin || canInstall) && <DropdownMenuSeparator />}
               <DropdownMenuItem onClick={signOut} className="rounded-lg cursor-pointer font-medium text-destructive focus:text-destructive">
                 <LogOut className="mr-2 h-4 w-4" /> Sign out
               </DropdownMenuItem>

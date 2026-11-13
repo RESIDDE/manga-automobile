@@ -22,7 +22,7 @@ export const COMPANY = {
     "by Transcorp Hilton, Millennium Park,",
     "Abuja Nigeria.",
   ],
-  tel: "09032216333",
+  tel: "08099999915",
   // RC number and email are not on the current letterhead; add them here when known
 };
 

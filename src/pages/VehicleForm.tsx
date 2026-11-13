@@ -118,7 +118,10 @@ export default function VehicleForm() {
   /** A car snapped outside the stand: cost_price is the owner's price, price is ours. */
   const external = isExternal(form);
   const officeIsStandard = isStandardMarkup(form.cost_price, form.price);
-  const { role } = useAuth();
+  const { role, profile } = useAuth();
+  /** "Received by" is whoever is signed in: their profile name and phone. */
+  const myName = (profile?.display_name || profile?.username || "").trim();
+  const myPhone = (profile?.phone || "").trim();
   const { permissions } = usePermissions();
   const hasEdit = canEdit(role, "vehicles", permissions);
   const hasCreate = canCreate(role, "vehicles", permissions);
@@ -303,8 +306,8 @@ export default function VehicleForm() {
         source_rep_name: form.source_rep_name.trim() || null,
         source_rep_phone: form.source_rep_phone.trim() || null,
         source_rep_signature: form.source_rep_signature || null,
-        accepted_by_name: form.accepted_by_name.trim() || null,
-        accepted_by_phone: form.accepted_by_phone.trim() || null,
+        accepted_by_name: form.accepted_by_name.trim() || myName || null,
+        accepted_by_phone: form.accepted_by_phone.trim() || (form.accepted_by_name.trim() ? "" : myPhone) || null,
         accepted_date: form.accepted_date || null,
         accepted_signature: form.accepted_signature || null,
         inventory_type: form.inventory_type || "main",
@@ -436,6 +439,19 @@ export default function VehicleForm() {
       action: { label: "Undo", onClick: () => setForm((cur) => ({ ...cur, ...previous })) },
     });
   };
+
+  // A new vehicle is received by the person entering it
+  useEffect(() => {
+    if (isEdit || !myName) return;
+    setForm((prev) =>
+      prev.accepted_by_name === myName ? prev : {
+        ...prev,
+        accepted_by_name: myName,
+        accepted_by_phone: prev.accepted_by_phone || myPhone,
+        accepted_date: prev.accepted_date || new Date().toISOString().slice(0, 10),
+      }
+    );
+  }, [isEdit, myName, myPhone, setForm]);
 
   const field = (
     key: keyof FormData,
@@ -735,7 +751,20 @@ export default function VehicleForm() {
             <CardTitle>Acceptance — who received the vehicle</CardTitle>
           </CardHeader>
           <CardContent className="grid gap-4 md:grid-cols-2">
-            {field("accepted_by_name", "Received By")}
+            <div className="space-y-1">
+              <Label htmlFor="accepted_by_name">Received By</Label>
+              <Input
+                id="accepted_by_name"
+                readOnly
+                value={form.accepted_by_name || myName}
+                className="bg-muted/40 cursor-not-allowed"
+              />
+              <p className="text-[11px] text-muted-foreground">
+                {isEdit && form.accepted_by_name && form.accepted_by_name !== myName
+                  ? "Recorded when the vehicle was received."
+                  : "Filled in from your profile."}
+              </p>
+            </div>
             {field("accepted_by_phone", "Phone")}
             {field("accepted_date", "Date Received", "date")}
             {!external && (

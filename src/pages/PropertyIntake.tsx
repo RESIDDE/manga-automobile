@@ -20,18 +20,12 @@ import {
   PlusCircle, Users, Pencil, Download, ChevronRight, ChevronLeft,
   Building2, ClipboardList, Stamp, Info, Clock, XCircle, MapPin,
 } from "lucide-react";
-import { downloadAsPNG, downloadAsPDF, triggerPrint } from "@/lib/exportHelpers";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { PrintHeader, PrintWatermark, getPrintHeaderHTML, getPrintWatermarkHTML } from "@/components/PrintHeader";
-import { PrintFooter, getPrintFooterHTML } from "@/components/PrintFooter";
+import { MODERN_FONT, PrintHeader, PrintWatermark } from "@/components/PrintHeader";
+import { DocumentToolbar } from "@/components/DocumentToolbar";
+import { PrintSheet } from "@/components/PrintSheet";
 import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
 import { canCreate, canDelete, canEdit } from "@/lib/permissions";
@@ -203,126 +197,6 @@ export default function PropertyIntake() {
         [name]: list.includes(value) ? list.filter((v) => v !== value) : [...list, value],
       };
     });
-  };
-
-  // ── Print / export template ───────────────────────────────────────────────
-  const box = (checked: boolean) => (checked ? "☑" : "☐");
-
-  const optionLineHTML = (
-    options: { value: string; label: string }[],
-    selected: string[],
-    otherText?: string,
-  ) =>
-    options
-      .map((o) => {
-        const isOn = selected.includes(o.value);
-        const suffix = o.value === "other" && isOn && otherText ? `: ${otherText}` : "";
-        return `<div class="opt">${box(isOn)} ${o.label}${suffix}</div>`;
-      })
-      .join("");
-
-  const getIntakeHTML = (data: FormState, approverSig: string, sig1: string, sig2: string, number: string | null) => {
-    return `<html><head><meta charset="utf-8" /><title>Property Intake - ${data.fullName}</title>
-    <style>
-      body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto; color: #333; line-height: 1.5; }
-      .title { text-align: center; margin: 24px 0 18px; font-size: 19px; font-weight: 800; text-transform: uppercase; text-decoration: underline; letter-spacing: 1px; }
-      .meta { display: flex; gap: 40px; font-size: 14px; font-weight: 700; margin-bottom: 20px; }
-      .section { margin-bottom: 22px; page-break-inside: avoid; }
-      .section-title { font-weight: 800; font-size: 14px; text-transform: uppercase; margin-bottom: 8px; border-bottom: 1px solid #eee; padding-bottom: 5px; letter-spacing: 0.5px; }
-      .field { display: flex; border-bottom: 1px solid #f0f0f0; padding: 6px 0; font-size: 13px; }
-      .label { font-weight: 700; width: 240px; color: #555; }
-      .value { flex: 1; font-weight: 600; }
-      .opts { display: flex; flex-wrap: wrap; gap: 6px 22px; padding: 6px 0 8px; }
-      .opt { font-size: 13px; font-weight: 600; }
-      .stack .opt { width: 100%; }
-      .signature-area { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: 30px; }
-      .sig-box { border-bottom: 1px solid #333; height: 70px; display: flex; align-items: flex-end; margin-bottom: 8px; }
-      .sig-img { max-height: 62px; object-fit: contain; }
-      @media print { body { padding: 20px; } }
-    </style></head><body>
-    ${getPrintWatermarkHTML()}
-    ${getPrintHeaderHTML()}
-    <div class="title">Property Intake &amp; Inspection Form</div>
-    <div class="meta">
-      <span>Form No.: ${number || "________"}</span>
-      <span>Date: ${formatDate(data.formDate) || "________"}</span>
-    </div>
-
-    <div class="section">
-      <div class="section-title">Information</div>
-      <div class="field"><span class="label">1. Full Name:</span> <span class="value">${data.fullName}</span></div>
-      <div class="field"><span class="label">2. Phone Number:</span> <span class="value">${data.phoneNumber}</span></div>
-      <div class="field"><span class="label">3. Residential Address:</span> <span class="value">${data.residentialAddress}</span></div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">Property Information</div>
-      <div class="field"><span class="label">4. Property Type:</span></div>
-      <div class="opts">${optionLineHTML(PROPERTY_TYPES, data.propertyType ? [data.propertyType] : [], data.propertyTypeOther)}</div>
-      <div class="field"><span class="label">5. Property Location/Address:</span> <span class="value">${data.propertyLocation}</span></div>
-      <div class="field"><span class="label">6. Ownership Documents Sighted:</span></div>
-      <div class="opts stack">${optionLineHTML(OWNERSHIP_DOCS, data.ownershipDocuments, data.ownershipDocumentOther)}</div>
-      <div class="field"><span class="label">7. Property Specifications:</span> <span class="value">${data.propertySpecifications}</span></div>
-      <div class="field"><span class="label">8. Land/Property Size:</span> <span class="value">${data.propertySize}</span></div>
-      <div class="field"><span class="label">9. Plot Number:</span> <span class="value">${data.plotNumber}</span></div>
-      <div class="field"><span class="label">10. Price (₦):</span> <span class="value">${formatNaira(data.price)}</span></div>
-      <div class="field"><span class="label">11. Relationship with Property Owner:</span></div>
-      <div class="opts stack">${optionLineHTML(RELATIONSHIPS, data.ownerRelationship ? [data.ownerRelationship] : [], data.ownerRelationshipOther)}</div>
-      <div class="field"><span class="label">12. Advert Placement:</span></div>
-      <div class="opts stack">${optionLineHTML(ADVERT_PLACEMENTS, data.advertPlacement)}</div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">Company Use</div>
-      <div class="field"><span class="label">1. Property/Land Inspected?</span>
-        <span class="value">${box(data.inspected === "yes")} Yes &nbsp;&nbsp; ${box(data.inspected === "no")} No</span>
-      </div>
-      <div class="field"><span class="label">2. Appointment Date for Inspection:</span> <span class="value">${formatDate(data.inspectionDate)}</span></div>
-      <div class="field"><span class="label">Time:</span> <span class="value">${data.inspectionTime}</span></div>
-      <div class="field"><span class="label">Officer Assigned:</span> <span class="value">${data.officerAssigned}</span></div>
-      <div class="field"><span class="label">3. Payment Status:</span>
-        <span class="value">${box(data.paymentStatus === "paid")} Paid &nbsp;&nbsp; ${box(data.paymentStatus === "pending")} Pending</span>
-      </div>
-      <div class="field"><span class="label">Amount Paid:</span> <span class="value">${formatNaira(data.amountPaid)}</span></div>
-      <div class="field"><span class="label">Receipt No.:</span> <span class="value">${data.receiptNumber}</span></div>
-      <div class="field"><span class="label">4. Condition/Remarks:</span> <span class="value">${data.conditionRemarks}</span></div>
-    </div>
-
-    <div class="section">
-      <div class="section-title">Official Use Only</div>
-      <div class="field"><span class="label">1. Property Accepted by Company?</span>
-        <span class="value">${box(data.decision === "approved")} Approved &nbsp;&nbsp; ${box(data.decision === "declined")} Declined</span>
-      </div>
-      <div class="field"><span class="label">2. Reason (if declined):</span> <span class="value">${data.declineReason}</span></div>
-      <div class="field"><span class="label">3. Manager's Comments:</span> <span class="value">${data.managerComments}</span></div>
-      <div class="field"><span class="label">4. Approved By (C.E.O/Manager):</span> <span class="value">${data.approvedByName}</span></div>
-      <div class="field"><span class="label">Date:</span> <span class="value">${formatDate(data.approvedDate)}</span></div>
-      <div class="field" style="border:none; padding-top:10px;"><span class="label">Agreement:</span> <span class="value">${data.agreement}</span></div>
-    </div>
-
-    <div class="signature-area">
-      <div>
-        <div class="sig-box">${approverSig ? `<img src="${approverSig}" class="sig-img" />` : ""}</div>
-        <div style="font-size: 12px; font-weight: 700;">Approved By (C.E.O/Manager)</div>
-        <div style="font-size: 12px;">Name: ${data.approvedByName}</div>
-      </div>
-      <div></div>
-      <div>
-        <div class="sig-box">${sig1 ? `<img src="${sig1}" class="sig-img" />` : ""}</div>
-        <div style="font-size: 12px; font-weight: 700;">Sign:</div>
-      </div>
-      <div>
-        <div class="sig-box">${sig2 ? `<img src="${sig2}" class="sig-img" />` : ""}</div>
-        <div style="font-size: 12px; font-weight: 700;">Sign:</div>
-      </div>
-    </div>
-
-    ${getPrintFooterHTML()}
-    </body></html>`;
-  };
-
-  const handlePrint = () => {
-    triggerPrint(getIntakeHTML(formData, approverSignature, signOne, signTwo, formNumber));
   };
 
   // ── Queries ───────────────────────────────────────────────────────────────
@@ -578,12 +452,31 @@ export default function PropertyIntake() {
     </div>
   );
 
-  const DocumentPreview = () => (
-    <div className="w-full bg-white text-black p-6 sm:p-10 shadow-2xl rounded-2xl border border-border/5 overflow-hidden relative">
-      <div className="absolute top-0 right-0 p-4 opacity-5 print:hidden">
-        <Building2 className="w-40 h-40" />
-      </div>
+  /**
+   * One A4 sheet. The form runs to two of them, split between sections, so the
+   * first page ends with clear space at the bottom instead of a section being
+   * cut in half wherever the paper runs out. Each sheet prints on its own page
+   * and becomes its own page in the PDF.
+   */
+  const Sheet = ({ page, children }: { page: number; children: React.ReactNode }) => (
+    <div
+      className={cn(
+        "print-document-page w-full md:w-[210mm] md:min-h-[297mm] p-8 md:p-[16mm] md:pb-[22mm] text-black flex flex-col",
+        page > 1 && "mt-6 print:mt-0",
+      )}
+      style={{ fontFamily: MODERN_FONT }}
+    >
       <PrintWatermark />
+      <div className="relative z-10 flex-1">{children}</div>
+      <p className="relative z-10 pt-3 text-center text-[10px] font-semibold text-gray-500">
+        {formNumber ? `Form No. ${formNumber} · ` : ""}Page {page} of 2
+      </p>
+    </div>
+  );
+
+  const DocumentPreview = () => (
+    <>
+    <Sheet page={1}>
       <PrintHeader />
       <div className="text-center my-6">
         <h1 className="text-xl font-black text-black uppercase tracking-widest underline underline-offset-4">
@@ -637,10 +530,21 @@ export default function PropertyIntake() {
             options={RELATIONSHIPS}
             selected={formData.ownerRelationship ? [formData.ownerRelationship] : []}
             otherText={formData.ownerRelationshipOther}
+            inline
           />
-          <OptionList label="12. Advert Placement" options={ADVERT_PLACEMENTS} selected={formData.advertPlacement} />
+          <OptionList label="12. Advert Placement" options={ADVERT_PLACEMENTS} selected={formData.advertPlacement} inline />
         </div>
       </section>
+
+    </Sheet>
+
+    <Sheet page={2}>
+      <div className="flex items-baseline justify-between border-b border-gray-300 pb-2 mb-6">
+        <span className="text-sm font-black uppercase tracking-widest">Property Intake &amp; Inspection Form</span>
+        <span className="text-xs text-gray-600">
+          {formData.fullName ? `${formData.fullName} · ` : ""}{formatDate(formData.formDate)}
+        </span>
+      </div>
 
       <section className="mb-6">
         <h2 className="font-black text-sm uppercase tracking-wide mb-1 flex items-center gap-2"><ClipboardList className="w-3 h-3" /> Company Use</h2>
@@ -710,8 +614,8 @@ export default function PropertyIntake() {
           </div>
         </div>
       </section>
-      <PrintFooter />
-    </div>
+    </Sheet>
+    </>
   );
 
   const inputClass = "h-12 bg-background/50 border-white/10 rounded-xl px-4";
@@ -724,41 +628,17 @@ export default function PropertyIntake() {
     const fileSlug = `property_intake_${(formNumber || formData.fullName).toString().replace(/\s+/g, "_")}`;
     return (
       <div className="animate-fade-up max-w-5xl mx-auto pb-12 px-4 print:p-0 print:m-0">
-        <div className="flex items-center justify-between mb-8 print:hidden">
-          <Button variant="ghost" onClick={() => setMode("edit")} className="rounded-xl gap-2 hover:bg-background/80">
-            <ArrowLeft className="w-4 h-4" /> Back to Editor
-          </Button>
-          <div className="flex gap-3">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button className="rounded-xl gap-2 bg-teal-500 hover:bg-teal-600 text-white shadow-lg shadow-teal-500/20 font-semibold px-6">
-                  <Download className="w-4 h-4" /> Export Options
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="rounded-xl glass-panel p-2 shadow-2xl border-white/10" align="end">
-                <DropdownMenuItem
-                  onClick={() => downloadAsPDF(getIntakeHTML(formData, approverSignature, signOne, signTwo, formNumber), fileSlug)}
-                  className="rounded-lg cursor-pointer font-bold"
-                >
-                  <FileText className="mr-2 h-4 w-4 text-teal-500" /> Download PDF (Direct)
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={handlePrint} className="rounded-lg cursor-pointer text-muted-foreground mt-1 pt-2 border-t border-white/5">
-                  <Printer className="mr-2 h-4 w-4" /> Print / Save PDF (Dialog)
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => downloadAsPNG(getIntakeHTML(formData, approverSignature, signOne, signTwo, formNumber), fileSlug)}
-                  className="rounded-lg cursor-pointer text-muted-foreground"
-                >
-                  <Download className="mr-2 h-4 w-4" /> Download as Image (PNG)
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-
-        <div className="max-w-4xl mx-auto" ref={documentRef}>
+        <DocumentToolbar
+          documentRef={documentRef}
+          filename={fileSlug}
+          entity="Property Intake"
+          recordId={editingId ?? undefined}
+          onBack={() => setMode("edit")}
+          accentClass="bg-teal-500 hover:bg-teal-600 shadow-teal-500/20"
+        />
+        <PrintSheet ref={documentRef}>
           <DocumentPreview />
-        </div>
+        </PrintSheet>
       </div>
     );
   }

@@ -51,6 +51,14 @@ export const UNRESTRICTED_ROLES = ["super_admin", "admin"];
 export const isUnrestricted = (role: AppRole | null): boolean =>
   !!role && UNRESTRICTED_ROLES.includes(role);
 
+// ─── Direct Sales Agent ─────────────────────────────────────────────────────
+// A fixed role outside the matrix: it sees available cars and their office
+// price on one page and nothing else. The database enforces the same limits.
+
+export const DSA_ROLE = "dsa";
+export const DSA_HOME = "/available-cars";
+export const isDsa = (role: AppRole | null): boolean => role === DSA_ROLE;
+
 // ─── Defaults ───────────────────────────────────────────────────────────────
 // Used when the stored matrix is missing or unreadable, so a bad read degrades
 // to sane access rather than locking everybody out.
@@ -94,11 +102,29 @@ export const emptyRolePermissions = (): RolePermissions => ({
  *    bundled with edit and must now be granted deliberately
  *  - default roles missing from the saved JSON are added from the defaults
  */
+/**
+ * Roles an admin deleted. Stored inside the saved matrix under this key so a
+ * deleted built-in role (sales, mechanic) is not quietly re-added from the
+ * defaults the next time the matrix is read.
+ */
+export const DELETED_ROLES_KEY = "__deleted";
+
+/** The deleted-role list from a stored matrix. */
+export function deletedRoles(raw: unknown): string[] {
+  const list = (raw && typeof raw === "object" ? (raw as any)[DELETED_ROLES_KEY] : null);
+  return Array.isArray(list) ? list.filter((r: unknown): r is string => typeof r === "string") : [];
+}
+
+/** Roles that can never be deleted. */
+export const PROTECTED_ROLES = ["super_admin", "admin", "dsa"];
+
 export function normalizePermissions(raw: unknown): PermissionsMap {
   const out: PermissionsMap = {};
   const source = (raw && typeof raw === "object" ? raw : {}) as Record<string, any>;
+  const deleted = new Set(deletedRoles(raw));
 
   for (const [role, value] of Object.entries(source)) {
+    if (role === DELETED_ROLES_KEY || role === DSA_ROLE || deleted.has(role)) continue;
     if (!value || typeof value !== "object") continue;
 
     const clean = (list: unknown): PageKey[] =>
@@ -124,7 +150,7 @@ export function normalizePermissions(raw: unknown): PermissionsMap {
   }
 
   for (const [role, perms] of Object.entries(DEFAULT_PERMISSIONS)) {
-    if (!out[role]) out[role] = { ...perms };
+    if (!out[role] && (!deleted.has(role) || PROTECTED_ROLES.includes(role))) out[role] = { ...perms };
   }
 
   return out;
@@ -140,11 +166,14 @@ function allows(
 ): boolean {
   // Signed in but no role row yet: a pending user sees nothing
   if (!role) return false;
+  // A DSA has no page in the matrix, whatever it says
+  if (isDsa(role)) return false;
   // Admin can never lock itself out, whatever the matrix says
   if (isUnrestricted(role)) return true;
 
-  const map = permissions ?? DEFAULT_PERMISSIONS;
-  const perms = map[role] ?? DEFAULT_PERMISSIONS[role];
+  // A stored matrix is complete (defaults are filled in when it is read), so a
+  // role missing from it was deleted and gets nothing
+  const perms = permissions ? permissions[role] : DEFAULT_PERMISSIONS[role];
   if (!perms) return false;
 
   return (perms[action] ?? []).includes(page);
@@ -171,10 +200,9 @@ export const canDelete = (
 export function getAccessiblePages(
   role: AppRole | null, permissions?: PermissionsMap | null
 ): PageKey[] {
-  if (!role) return [];
+  if (!role || isDsa(role)) return [];
   if (isUnrestricted(role)) return [...ALL_PAGE_KEYS];
-  const map = permissions ?? DEFAULT_PERMISSIONS;
-  const view = (map[role] ?? DEFAULT_PERMISSIONS[role])?.view ?? [];
+  const view = (permissions ? permissions[role] : DEFAULT_PERMISSIONS[role])?.view ?? [];
   return ALL_PAGE_KEYS.filter((key) => view.includes(key));
 }
 
@@ -189,6 +217,7 @@ export function getAccessiblePages(
 export function firstAccessiblePath(
   role: AppRole | null, permissions?: PermissionsMap | null
 ): string | null {
+  if (isDsa(role)) return DSA_HOME;
   const [first] = getAccessiblePages(role, permissions);
   if (!first) return null;
   return ALL_PAGES.find((p) => p.key === first)?.path ?? null;
@@ -206,8 +235,47 @@ export function allRoleKeys(permissions?: PermissionsMap | null): string[] {
 /** "sales" → "Sales"; a stored label in `role_labels` wins. */
 export function roleLabel(role: string, labels?: Record<string, string> | null): string {
   if (labels?.[role]) return labels[role];
+  if (role === DSA_ROLE) return "Direct Sales Agent";
   return role
     .split("_")
     .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
     .join(" ");
+}
+
+// ─── Collaboration features ─────────────────────────────────────────────────
+// Messages and Tags are not pages in the matrix above (they never decide where
+// someone lands). They live in their own setting, `feature_access`, where a
+// role with no entry has both: on for everyone until an admin turns them off.
+
+export type FeatureKey = "messages" | "tags";
+export type FeatureAccess = Record<string, FeatureKey[]>;
+
+export const ALL_FEATURES: { key: FeatureKey; label: string; hint: string }[] = [
+  { key: "messages", label: "Messages", hint: "Chat, voice notes, photos and files" },
+  { key: "tags",     label: "Tags",     hint: "Privately tag a colleague on any page" },
+];
+
+const FEATURE_KEYS = ALL_FEATURES.map((f) => f.key);
+
+export function normalizeFeatureAccess(raw: unknown): FeatureAccess {
+  const out: FeatureAccess = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const [role, list] of Object.entries(raw as Record<string, unknown>)) {
+    if (Array.isArray(list)) out[role] = list.filter((f): f is FeatureKey => FEATURE_KEYS.includes(f as FeatureKey));
+  }
+  return out;
+}
+
+export function hasFeature(
+  role: AppRole | null, feature: FeatureKey, access?: FeatureAccess | null
+): boolean {
+  if (!role) return false;
+  if (isUnrestricted(role)) return true;
+  const list = access?.[role];
+  return list === undefined ? true : list.includes(feature);
+}
+
+/** The full list a role currently has, defaults filled in — for saving one toggle. */
+export function featuresFor(role: string, access?: FeatureAccess | null): FeatureKey[] {
+  return access?.[role] ?? [...FEATURE_KEYS];
 }
