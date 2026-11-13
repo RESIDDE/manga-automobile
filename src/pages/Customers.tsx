@@ -18,7 +18,8 @@ import {
 import {
   Pagination, PaginationContent, PaginationItem, PaginationLink, PaginationNext, PaginationPrevious,
 } from "@/components/ui/pagination";
-import { PlusCircle, Pencil, Trash2, Users, Phone, Mail, MapPin, Search, Download } from "lucide-react";
+import { PlusCircle, Pencil, Trash2, Users, Phone, Mail, MapPin, Search, Download, IdCard } from "lucide-react";
+import { omitKeys, warnOnce, withSchemaFallback } from "@/lib/dbCompat";
 import { exportPhoneNumbers } from "@/lib/phoneExport";
 import { toast } from "sonner";
 import { SignaturePad } from "@/components/SignaturePad";
@@ -31,12 +32,13 @@ type Customer = {
   name: string;
   email: string | null;
   phone: string | null;
+  nin?: string | null;
   address: string | null;
   notes: string | null;
   signature_data: string | null;
 };
 
-const emptyForm = { name: "", email: "", phone: "", address: "", notes: "", signature_data: "" };
+const emptyForm = { name: "", email: "", phone: "", nin: "", address: "", notes: "", signature_data: "" };
 
 export default function Customers() {
   const { role } = useAuth();
@@ -82,7 +84,8 @@ export default function Customers() {
 
   const filtered = customers.filter(c => {
     const q = search.toLowerCase();
-    return !q || c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)) || (c.email && c.email.toLowerCase().includes(q));
+    return !q || c.name.toLowerCase().includes(q) || (c.phone && c.phone.includes(q)) || (c.email && c.email.toLowerCase().includes(q))
+      || (!!c.nin && c.nin.replace(/\s/g, "").includes(q.replace(/\s/g, "")));
   });
 
   const totalPages = Math.ceil(filtered.length / PAGE_SIZE);
@@ -94,17 +97,17 @@ export default function Customers() {
         name: form.name,
         email: form.email || null,
         phone: form.phone || null,
+        nin: form.nin.trim() || null,
         address: form.address || null,
         notes: form.notes || null,
         signature_data: form.signature_data || null,
       };
-      if (editId) {
-        const { error } = await supabase.from("customers").update(payload).eq("id", editId);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from("customers").insert(payload);
-        if (error) throw error;
-      }
+      // Until the NIN migration is run, save everything else rather than fail
+      const save = (p: Record<string, any>) => editId
+        ? (supabase as any).from("customers").update(p).eq("id", editId)
+        : (supabase as any).from("customers").insert(p);
+      await withSchemaFallback(() => save(payload), () => save(omitKeys(payload, ["nin"])), ["nin"],
+        () => warnOnce("customers.nin", () => toast.warning("NIN wasn't saved — the database needs the NIN update")));
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customers"] });
@@ -136,7 +139,7 @@ export default function Customers() {
 
   const openEdit = (c: Customer) => {
     setEditId(c.id);
-    setForm({ name: c.name, email: c.email || "", phone: c.phone || "", address: c.address || "", notes: c.notes || "", signature_data: c.signature_data || "" });
+    setForm({ name: c.name, email: c.email || "", phone: c.phone || "", nin: c.nin || "", address: c.address || "", notes: c.notes || "", signature_data: c.signature_data || "" });
     setDialogOpen(true);
   };
 
@@ -220,6 +223,11 @@ export default function Customers() {
                     {c.phone && (
                       <div className="flex items-center gap-2 text-sm text-muted-foreground">
                          <Phone className="h-3.5 w-3.5 opacity-70" /> {c.phone}
+                      </div>
+                    )}
+                    {c.nin && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                         <IdCard className="h-3.5 w-3.5 opacity-70" /> NIN {c.nin}
                       </div>
                     )}
                     {c.email && (
@@ -329,6 +337,7 @@ export default function Customers() {
                   name: c.name ?? "",
                   email: c.email ?? "",
                   phone: c.phone ?? "",
+                  nin: (c as any).nin ?? "",
                   address: c.address ?? "",
                   notes: "",
                   signature_data: "",
@@ -336,6 +345,18 @@ export default function Customers() {
                 toast.info(`Editing the existing record for ${c.name}`);
               }}
             />
+            <div className="space-y-2">
+               <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                 NIN <span className="normal-case font-normal tracking-normal">(optional)</span>
+               </Label>
+               <Input
+                 className="rounded-xl h-11 bg-background/50 border-white/10 focus-visible:ring-emerald-500"
+                 inputMode="numeric" autoComplete="off"
+                 value={form.nin}
+                 onChange={(e) => setForm({ ...form, nin: e.target.value })}
+                 placeholder="National Identification Number"
+               />
+            </div>
             <div className="space-y-2">
                <Label className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Address</Label>
                <Input className="rounded-xl h-11 bg-background/50 border-white/10 focus-visible:ring-emerald-500" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} placeholder="123 Main St..." />

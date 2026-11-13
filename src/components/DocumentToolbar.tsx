@@ -7,6 +7,8 @@ import {
   captureDocumentElement, downloadDocument, printDocument, type DocFormat,
 } from "@/lib/documentExport";
 import { logAction } from "@/lib/logger";
+import { archiveSheet, type ArchiveMeta } from "@/lib/archive";
+import { ArchiveToggle } from "@/components/ArchiveToggle";
 
 type Props = {
   /** The A4 sheet to rasterise — the same node that previews and prints. */
@@ -19,6 +21,12 @@ type Props = {
   backLabel?: string;
   /** Tailwind classes for the solid Print button. */
   accentClass?: string;
+  /**
+   * Searchable details for the Document Archive (person, number, date, the
+   * customer and vehicle records). Every print and download files a copy; with
+   * no meta it is still filed, under the entity name and file name.
+   */
+  archive?: Partial<ArchiveMeta>;
 };
 
 /**
@@ -30,14 +38,24 @@ export function DocumentToolbar({
   documentRef, filename, entity, recordId, onBack,
   backLabel = "Back to Editor",
   accentClass = "bg-sky-500 hover:bg-sky-600",
+  archive,
 }: Props) {
+  const meta = (): ArchiveMeta => ({
+    type: entity,
+    title: filename,
+    entityId: recordId ?? null,
+    ...archive,
+  });
+
   const handleDownload = async (fmt: DocFormat) => {
     await downloadDocument(documentRef.current, filename, fmt);
     logAction("EXPORT", entity, recordId ?? undefined, { format: fmt });
+    archiveSheet(documentRef.current, meta(), fmt);
   };
 
   const handlePrint = async () => {
     logAction("PRINT", entity, recordId ?? undefined);
+    archiveSheet(documentRef.current, meta(), "print");
     await printDocument(
       async () => captureDocumentElement(documentRef.current as HTMLElement, "pdf"),
       filename
@@ -51,6 +69,7 @@ export function DocumentToolbar({
       </Button>
 
       <div className="flex flex-wrap items-center gap-2">
+        <ArchiveToggle />
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="outline" className="rounded-xl border-white/10 hover:bg-white/5">

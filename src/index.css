@@ -176,7 +176,10 @@
     box-shadow: none !important;
     width: 210mm !important;
     min-height: 0 !important;
-    margin: 0 !important;
+    /* Centred on the paper. "margin: 0" pinned the sheet to the left edge, so a
+       sheet shrunk to fit one page (PrintFitSync) or printed on wider paper
+       (US Letter) left all the spare room on the right. */
+    margin: 0 auto !important;
     break-inside: avoid;
     page-break-inside: avoid;
   }
@@ -187,6 +190,7 @@
   }
   .print-pages-container {
     display: block !important;
+    width: 100% !important;
     gap: 0 !important;
   }
 }

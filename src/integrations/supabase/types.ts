@@ -88,6 +88,8 @@ export type Database = {
       }
       sales_agreements: {
         Row: {
+          seller_nin: string | null
+          buyer_nin: string | null
           id: string
           created_at: string
           agreement_date: string | null
@@ -129,6 +131,8 @@ export type Database = {
           created_by: string | null
         }
         Insert: {
+          seller_nin?: string | null
+          buyer_nin?: string | null
           id?: string
           created_at?: string
           agreement_date?: string | null
@@ -170,6 +174,8 @@ export type Database = {
           created_by?: string | null
         }
         Update: {
+          seller_nin?: string | null
+          buyer_nin?: string | null
           id?: string
           created_at?: string
           agreement_date?: string | null
@@ -214,6 +220,7 @@ export type Database = {
       }
       performance_quotes: {
         Row: {
+          customer_nin: string | null
           document_no: string | null
           id: string
           customer_id: string | null
@@ -236,6 +243,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          customer_nin?: string | null
           document_no?: string | null
           id?: string
           customer_id?: string | null
@@ -258,6 +266,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          customer_nin?: string | null
           document_no?: string | null
           id?: string
           customer_id?: string | null
@@ -551,6 +560,7 @@ export type Database = {
       }
       customers: {
         Row: {
+          nin: string | null
           address: string | null
           created_at: string
           created_by: string | null
@@ -563,6 +573,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          nin?: string | null
           address?: string | null
           created_at?: string
           created_by?: string | null
@@ -575,6 +586,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          nin?: string | null
           address?: string | null
           created_at?: string
           created_by?: string | null
@@ -817,6 +829,7 @@ export type Database = {
       }
       property_intakes: {
         Row: {
+          nin: string | null
           id: string
           created_at: string
           form_number: string | null
@@ -856,6 +869,7 @@ export type Database = {
           created_by: string | null
         }
         Insert: {
+          nin?: string | null
           id?: string
           created_at?: string
           form_number?: string | null
@@ -895,6 +909,7 @@ export type Database = {
           created_by?: string | null
         }
         Update: {
+          nin?: string | null
           id?: string
           created_at?: string
           form_number?: string | null

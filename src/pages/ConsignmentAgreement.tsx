@@ -150,7 +150,8 @@ function ConsignmentDocument({ data }: { data: ConsignmentForm }) {
         <PrintHeader docNumber={data.documentNo} />
 
         <div className="text-center mb-5">
-          <h1 className="text-[15.5px] font-black uppercase tracking-[0.1em] text-black underline underline-offset-4">
+          {/* A drawn rule, not text-decoration: the PDF renderer draws underlines through the letters */}
+          <h1 className="inline-block pb-[3px] text-[15.5px] font-black uppercase tracking-[0.1em] text-black" style={{ borderBottom: "1.5px solid #000" }}>
             Vehicle Display / Consignment Agreement
           </h1>
         </div>
@@ -204,7 +205,8 @@ function ConsignmentDocument({ data }: { data: ConsignmentForm }) {
         <section className="mb-4">
           <DocSectionTitle>Terms of Agreement</DocSectionTitle>
 
-          <div className="space-y-[10px] text-[10.5px] leading-[1.65] text-black text-justify">
+          {/* Left-aligned, not justified: the PDF renderer drops justified spacing and words run together */}
+          <div className="space-y-[10px] text-[10.5px] leading-[1.65] text-black text-left" style={{ wordSpacing: "0.04em" }}>
             <p>
               <span className="font-bold">1. PURPOSE.</span> The Owner has brought his/her vehicle to{" "}
               {COMPANY.name} {COMPANY.nameSuffix} car stand for display and sale.
@@ -496,6 +498,17 @@ export default function ConsignmentAgreement() {
           filename={`consignment-${(previewData.ownerName || "agreement").replace(/\s+/g, "-").toLowerCase()}`}
           entity={ENTITY}
           recordId={previewId}
+          archive={{
+            type: "Consignment Agreement",
+            title: `Consignment Agreement — ${previewData.ownerName || "Owner"}`,
+            number: previewData.documentNo || null,
+            docDate: previewData.agreementDate || null,
+            person: previewData.ownerName || null,
+            phone: previewData.ownerPhone || null,
+            nin: previewData.ownerIdNumber || null,
+            vehicle: [previewData.vehicleYear, previewData.vehicleMakeModel, previewData.vehicleChassis].filter(Boolean).join(" ") || null,
+            details: { agreement: previewData },
+          }}
           accentClass="bg-teal-500 hover:bg-teal-600 shadow-teal-500/20"
           onBack={() => setMode("edit")}
         />

@@ -24,6 +24,7 @@ import {
   PlusCircle, Trash2, Users, Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ArchiveToggle } from "@/components/ArchiveToggle";
 import { exportToCSV, printTable, downloadTableAsPDF } from "@/lib/exportHelpers";
 import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -465,6 +466,7 @@ export default function SalarySchedule() {
             </SelectContent>
           </Select>
 
+          <ArchiveToggle />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="h-9">

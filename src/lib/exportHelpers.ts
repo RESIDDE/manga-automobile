@@ -4,8 +4,19 @@ import { getPrintFooterHTML } from "@/components/PrintFooter";
 // Loaded on demand: see the note in documentExport.ts
 const loadHtml2Canvas = async () => (await import("html2canvas")).default;
 const loadJsPDF = async () => (await import("jspdf")).jsPDF;
+import { archivePage, type ArchiveAction } from "@/lib/archive";
+
+/** Files these older table printouts in the Document Archive too. */
+function fileInArchive(html: string, fallbackTitle: string, action: ArchiveAction) {
+  const titleTag = /<title>([^<]*)<\/title>/i.exec(html)?.[1]?.trim();
+  const title = titleTag || fallbackTitle.replace(/[_-]+/g, " ").trim() || "Report";
+  // "Outside Cars — Active — Manga Automobiles" → type "Outside Cars"
+  const type = title.split(/\s+[—–(-]\s*/)[0].trim() || "Report";
+  archivePage(html, { type, title }, action);
+}
 
 export async function downloadAsPDF(html: string, filename: string) {
+  fileInArchive(html, filename, "pdf");
   const container = document.createElement("div");
   // Set styles to make it look like a proper document
   container.style.position = "relative";
@@ -119,6 +130,7 @@ export async function downloadTableAsPDF(title: string, data: Record<string, any
 }
 
 export function triggerPrint(html: string) {
+  fileInArchive(html, "Printout", "print");
   const win = window.open("", "_blank");
   if (!win) {
     toast.error("Print was blocked. Allow pop-ups for this site and try again.");
@@ -144,6 +156,7 @@ export function triggerPrint(html: string) {
 }
 
 export async function downloadAsPNG(html: string, filename: string) {
+  fileInArchive(html, filename, "png");
   const container = document.createElement("div");
   // Set styles to make it look like a proper document
   container.style.position = "relative";

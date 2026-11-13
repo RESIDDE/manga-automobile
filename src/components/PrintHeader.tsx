@@ -303,7 +303,7 @@ export function DocField({
   className?: string;
 }) {
   return (
-    <div className={`flex items-baseline gap-2 ${className}`} style={{ borderBottom: ROW_RULE }}>
+    <div className={`flex items-baseline gap-2 pb-[3px] ${className}`} style={{ borderBottom: ROW_RULE }}>
       <span className="text-[9.5px] font-semibold uppercase tracking-wide text-neutral-500 shrink-0">
         {label}:
       </span>
@@ -318,7 +318,7 @@ export function DocField({
 export function InlineRuled({ children }: { children: ReactNode }) {
   return (
     <span
-      className="inline-block min-w-[110px] px-1 font-bold text-black text-center"
+      className="inline-block min-w-[110px] px-1 pb-[2px] leading-[1.3] font-bold text-black text-center"
       style={{ borderBottom: RULE }}
     >
       {children || " "}

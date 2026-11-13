@@ -24,6 +24,7 @@ import {
   Rows3, Search, Trash2, Warehouse,
 } from "lucide-react";
 import { toast } from "sonner";
+import { ArchiveToggle } from "@/components/ArchiveToggle";
 import { exportToCSV, exportToJSON, printTable, downloadTableAsPDF } from "@/lib/exportHelpers";
 import { CustomPagination } from "@/components/CustomPagination";
 import { RecordActions } from "@/components/RecordActions";
@@ -311,6 +312,7 @@ export default function OutsideVehicles() {
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <ArchiveToggle />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="rounded-xl border-white/10 hover:bg-white/5">

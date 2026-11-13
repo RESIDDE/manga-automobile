@@ -28,6 +28,7 @@ import {
   Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { toast } from "sonner";
+import { ArchiveToggle } from "@/components/ArchiveToggle";
 import { exportToCSV, exportToJSON, printTable, downloadTableAsPDF } from "@/lib/exportHelpers";
 import { CustomPagination } from "@/components/CustomPagination";
 import { RecordActions } from "@/components/RecordActions";
@@ -373,6 +374,7 @@ export default function VehiclesList() {
             <BarChart3 className="h-4 w-4 mr-2" /> Analytics
             <ChevronDown className={`h-4 w-4 ml-1 transition-transform ${showAnalytics ? "rotate-180" : ""}`} />
           </Button>
+          <ArchiveToggle />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" className="rounded-xl border-white/10 hover:bg-white/5">

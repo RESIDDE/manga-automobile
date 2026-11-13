@@ -342,6 +342,12 @@ export default function Expenses() {
           documentRef={sheetRef}
           filename={`expenses-${period}`}
           entity={ENTITY}
+          archive={{
+            type: "Expense Statement",
+            title: `Expense Statement — ${periodLabel(period)}`,
+            docDate: periodToDate(period),
+            details: { groups: sortedGroups(groups).map((g) => ({ group: g.name, total: groupTotal(g), entries: numberedItems(g) })) },
+          }}
           backLabel="Back to Expenses"
           accentClass="bg-rose-500 hover:bg-rose-600 shadow-rose-500/20"
           onBack={() => setShowSheet(false)}

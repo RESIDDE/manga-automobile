@@ -41,6 +41,7 @@ const Expenses = lazy(() => import("./pages/Expenses"));
 const Settings = lazy(() => import("./pages/Settings"));
 const Messages = lazy(() => import("./pages/Messages"));
 const AvailableCars = lazy(() => import("./pages/AvailableCars"));
+const DocumentArchive = lazy(() => import("./pages/DocumentArchive"));
 const PublicBooking = lazy(() => import("./pages/PublicBooking"));
 const SignCustomer = lazy(() => import("./pages/SignCustomer"));
 const SignSale = lazy(() => import("./pages/SignSale"));
@@ -119,6 +120,7 @@ function AppRoutes() {
             <Route path="/meetings"          element={<RoleGuard page="meetings"><Meetings /></RoleGuard>} />
             <Route path="/property-intake"   element={<RoleGuard page="property-intake"><PropertyIntake /></RoleGuard>} />
             <Route path="/salary-schedule"   element={<RoleGuard page="salary"><SalarySchedule /></RoleGuard>} />
+            <Route path="/document-archive"  element={<RoleGuard page="archive"><DocumentArchive /></RoleGuard>} />
             <Route path="/expenses"          element={<RoleGuard page="expenses"><Expenses /></RoleGuard>} />
             {/* Direct Sales Agents: available cars at the office price, nothing else */}
             <Route path="/available-cars"    element={<DsaGuard><AvailableCars /></DsaGuard>} />

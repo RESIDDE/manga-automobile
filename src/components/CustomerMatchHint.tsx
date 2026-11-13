@@ -28,7 +28,7 @@ export function CustomerMatchHint({ name, phone, excludeId, onPick, className = 
     queryFn: async () => {
       const { data, error } = await supabase
         .from("customers")
-        .select("id, name, phone, email, address");
+        .select("*"); // "*" so nin comes along once the column exists
       if (error) throw error;
       return data as CustomerLike[];
     },

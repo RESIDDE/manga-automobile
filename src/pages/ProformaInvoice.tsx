@@ -38,7 +38,7 @@ import { canCreate, canDelete, canEdit } from "@/lib/permissions";
 import { logAction } from "@/lib/logger";
 import { VIN_FULL_LENGTH } from "@/lib/constants";
 import { formatNaira, numberToWords } from "@/lib/numberToWords";
-import { withSchemaFallback } from "@/lib/dbCompat";
+import { omitKeys, withSchemaFallback } from "@/lib/dbCompat";
 import {
   ALL_TIME, ALL_WEEKS, longDate, matchesPeriod, monthOptions, shortDate, WEEK_OPTIONS,
 } from "@/lib/historyFilters";
@@ -89,7 +89,7 @@ type QuoteDoc = {
   document_no: string | null;
   quote_date: string;
   status: string;
-  customer: { name: string; phone: string; email: string; address: string };
+  customer: { name: string; phone: string; email: string; address: string; nin?: string };
   items: QuoteItem[];
   vat_percentage: string;
   bank_name: string;
@@ -131,6 +131,7 @@ function ProformaDocument({ doc }: { doc: QuoteDoc }) {
             {doc.customer.phone && <p className="text-[10px] text-black">{doc.customer.phone}</p>}
             {doc.customer.address && <p className="text-[10px] text-black">{doc.customer.address}</p>}
             {doc.customer.email && <p className="text-[10px] text-black">{doc.customer.email}</p>}
+            {doc.customer.nin && <p className="text-[10px] text-black">NIN: {doc.customer.nin}</p>}
           </div>
           <div>
             <MetaLabel>Date issued</MetaLabel>
@@ -288,7 +289,7 @@ export default function ProformaInvoice() {
   // editor state
   const [useExistingCustomer, setUseExistingCustomer] = useState(true);
   const [customerId, setCustomerId] = useState<string>("");
-  const [typedCustomer, setTypedCustomer] = useState({ name: "", phone: "", email: "", address: "" });
+  const [typedCustomer, setTypedCustomer] = useState({ name: "", phone: "", email: "", address: "", nin: "" });
   const [items, setItems] = useState<QuoteItem[]>([]);
   const [vatPercentage, setVatPercentage] = useState("");
   const [bank, setBank] = useState({ bank_name: "", account_number: "", account_name: "" });
@@ -331,7 +332,7 @@ export default function ProformaInvoice() {
       if (!d || (!d.items?.length && !d.typedCustomer?.name && !d.customerId)) return;
       setUseExistingCustomer(d.useExistingCustomer ?? true);
       setCustomerId(d.customerId ?? "");
-      setTypedCustomer(d.typedCustomer ?? { name: "", phone: "", email: "", address: "" });
+      setTypedCustomer(d.typedCustomer ?? { name: "", phone: "", email: "", address: "", nin: "" });
       setItems(Array.isArray(d.items) ? d.items : []);
       setVatPercentage(d.vatPercentage ?? "");
       setBank(d.bank ?? { bank_name: "", account_number: "", account_name: "" });
@@ -372,7 +373,7 @@ export default function ProformaInvoice() {
     queryFn: async () => {
       const { data, error } = await supabase
         .from("customers")
-        .select("id, name, phone, email, address");
+        .select("*"); // shares the ["customers"] cache with the Customers page; "*" keeps nin
       if (error) throw error;
       return data as any[];
     },
@@ -410,7 +411,7 @@ export default function ProformaInvoice() {
     setEditingDocumentNo(null);
     setUseExistingCustomer(true);
     setCustomerId("");
-    setTypedCustomer({ name: "", phone: "", email: "", address: "" });
+    setTypedCustomer({ name: "", phone: "", email: "", address: "", nin: "" });
     setItems([]);
     setVatPercentage("");
     setBank({ bank_name: "", account_number: "", account_name: "" });
@@ -437,6 +438,7 @@ export default function ProformaInvoice() {
       phone: quote.customer_phone || "",
       email: quote.customer_email || "",
       address: quote.customer_address || "",
+      nin: quote.customer_nin || "",
     });
     setItems(
       (quote.performance_quote_items || []).map((i: any) => ({
@@ -525,6 +527,7 @@ export default function ProformaInvoice() {
         phone: chosen?.phone || typedCustomer.phone,
         email: chosen?.email || typedCustomer.email,
         address: chosen?.address || typedCustomer.address,
+        nin: chosen?.nin || typedCustomer.nin || "",
       },
       items,
       vat_percentage: vatPercentage,
@@ -549,6 +552,7 @@ export default function ProformaInvoice() {
         customer_phone: chosen ? null : typedCustomer.phone.trim() || null,
         customer_email: chosen ? null : typedCustomer.email.trim() || null,
         customer_address: chosen ? null : typedCustomer.address.trim() || null,
+        customer_nin: chosen ? null : (typedCustomer.nin ?? "").trim() || null,
         quote_date: quoteDate,
         status,
         notes: notes.trim() || null,
@@ -563,19 +567,19 @@ export default function ProformaInvoice() {
 
       let quoteId = editingId;
       if (editingId) {
-        const { error } = await supabase
-          .from("performance_quotes")
-          .update(payload)
-          .eq("id", editingId);
-        if (error) throw error;
+        // Until the NIN migration is run, save everything else rather than fail
+        await withSchemaFallback(
+          () => supabase.from("performance_quotes").update(payload).eq("id", editingId).select("id"),
+          () => supabase.from("performance_quotes").update(omitKeys(payload, ["customer_nin"])).eq("id", editingId).select("id"),
+          ["customer_nin"],
+        );
         await logAction("UPDATE", ENTITY, editingId, { subtotal, total });
       } else {
-        const { data, error } = await supabase
-          .from("performance_quotes")
-          .insert(payload)
-          .select("id, document_no")
-          .single();
-        if (error) throw error;
+        const data = await withSchemaFallback(
+          () => supabase.from("performance_quotes").insert(payload).select("id, document_no").single(),
+          () => supabase.from("performance_quotes").insert(omitKeys(payload, ["customer_nin"])).select("id, document_no").single(),
+          ["customer_nin"],
+        );
         quoteId = data.id;
         setEditingDocumentNo((data as any).document_no ?? null);
         await logAction("CREATE", ENTITY, quoteId, { subtotal, total });
@@ -637,6 +641,7 @@ export default function ProformaInvoice() {
         phone: c?.phone || quote.customer_phone || "",
         email: c?.email || quote.customer_email || "",
         address: c?.address || quote.customer_address || "",
+        nin: c?.nin || quote.customer_nin || "",
       },
       items: (quote.performance_quote_items || []).map((i: any) => ({
         key: i.id,
@@ -696,6 +701,26 @@ export default function ProformaInvoice() {
           filename={`proforma-${previewDoc.document_no || "draft"}`}
           entity={ENTITY}
           recordId={previewDoc.id}
+          archive={{
+            type: "Proforma Invoice",
+            title: `Proforma Invoice ${previewDoc.document_no || "(draft)"} — ${previewDoc.customer.name || "Customer"}`,
+            number: previewDoc.document_no || null,
+            docDate: previewDoc.quote_date || null,
+            person: previewDoc.customer.name || null,
+            phone: previewDoc.customer.phone || null,
+            nin: previewDoc.customer.nin || null,
+            vehicle: previewDoc.items.map((i) => i.vehicle_description).filter(Boolean).join(", ") || null,
+            details: {
+              customer: previewDoc.customer,
+              vehicles: previewDoc.items.map((i) => ({
+                description: i.vehicle_description, vin: i.vin, condition: i.condition, transmission: i.transmission,
+                price: i.base_price, duty: i.has_duty ? i.duty_price : null, quantity: i.quantity,
+                ...(availableVehicles.find((v: any) => v.id === i.vehicle_id) ?? {}),
+              })),
+              status: previewDoc.status,
+              notes: previewDoc.notes,
+            },
+          }}
           backLabel={previewFromEditor ? "Back to Form" : "Back to Invoices"}
           accentClass="bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20"
           onBack={() => {
@@ -984,6 +1009,9 @@ export default function ProformaInvoice() {
                   <Input placeholder="Address" value={typedCustomer.address}
                     onChange={(e) => setTypedCustomer({ ...typedCustomer, address: e.target.value })}
                     className="h-10 rounded-xl bg-background/50 border-white/10" />
+                  <Input placeholder="NIN (optional)" value={typedCustomer.nin ?? ""} inputMode="numeric" autoComplete="off"
+                    onChange={(e) => setTypedCustomer({ ...typedCustomer, nin: e.target.value })}
+                    className="h-10 rounded-xl bg-background/50 border-white/10 sm:col-span-2" />
                   <div className="sm:col-span-2">
                     <CustomerMatchHint
                       name={typedCustomer.name}
@@ -991,7 +1019,7 @@ export default function ProformaInvoice() {
                       onPick={(c) => {
                         setUseExistingCustomer(true);
                         setCustomerId(c.id);
-                        setTypedCustomer({ name: "", phone: "", email: "", address: "" });
+                        setTypedCustomer({ name: "", phone: "", email: "", address: "", nin: "" });
                         toast.success(`Using the existing record for ${c.name}`);
                       }}
                     />

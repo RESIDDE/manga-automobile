@@ -58,6 +58,7 @@ const PAPER_COLUMNS = [
   "document_no", "seller_title", "buyer_title", "effective_date",
   "new_owner_details", "seller_sign_date", "buyer_sign_date",
   "seller_witness_date", "buyer_witness_date",
+  "seller_nin", "buyer_nin",
 ];
 
 const PAPER_SELECT = PAPER_COLUMNS.join(", ");
@@ -79,6 +80,7 @@ const COMPANY_SELLER = {
   sellerAddress: COMPANY.addressLines.join(" ").replace(/,$/, ""),
   sellerPhone: COMPANY.tel,
   sellerIdType: "",
+  sellerNin: "",
 };
 
 const EMPTY_FORM = {
@@ -91,6 +93,7 @@ const EMPTY_FORM = {
   buyerAddress: "",
   buyerPhone: "",
   buyerIdType: "",
+  buyerNin: "",
   vehicleMake: "",
   vehicleYearModel: "",
   vehicleColor: "",
@@ -132,11 +135,13 @@ const rowToForm = (row: any): SAForm => ({
   sellerAddress: row.seller_address || "",
   sellerPhone: row.seller_phone || "",
   sellerIdType: row.seller_id_type || "",
+  sellerNin: row.seller_nin || "",
   buyerTitle: row.buyer_title || "",
   buyerName: row.buyer_name || "",
   buyerAddress: row.buyer_address || "",
   buyerPhone: row.buyer_phone || "",
   buyerIdType: row.buyer_id_type || "",
+  buyerNin: row.buyer_nin || "",
   vehicleMake: row.vehicle_make || "",
   vehicleYearModel: row.vehicle_year_model || "",
   vehicleColor: row.vehicle_color || "",
@@ -211,7 +216,7 @@ const Fill = ({
   grow?: number;
 }) => (
   <span
-    className="min-w-0 px-1 pb-[1px] text-[12px] font-semibold text-black break-words"
+    className="min-w-0 px-1 pb-[3px] text-[12px] leading-[1.35] font-semibold text-black break-words"
     style={{ borderBottom: RULE, flex: `${grow} 1 0%` }}
   >
     {children || " "}
@@ -239,7 +244,7 @@ const SignLine = ({ label, value }: { label: string; value?: React.ReactNode }) 
   <div className="flex items-end gap-1.5">
     <span className="shrink-0 pb-[2px] text-[10.5px] text-black">{label}</span>
     <span
-      className="flex-1 min-w-0 px-1 pb-[1px] text-[10.5px] font-semibold text-black break-words"
+      className="flex-1 min-w-0 px-1 pb-[3px] text-[10.5px] leading-[1.35] font-semibold text-black break-words"
       style={{ borderBottom: RULE }}
     >
       {value || " "}
@@ -300,12 +305,14 @@ export function AgreementDocument({ data }: { data: SAForm }) {
         <div className="space-y-[13px]" style={{ fontFamily: PAPER_FONT }}>
           <FormLine label="This is to certify that I, Alh./Mall/Mr./Mrs." value={seller} grow={2} />
           <FormLine label="Of" value={data.sellerAddress} />
+          {data.sellerNin?.trim() && <FormLine label="NIN" value={data.sellerNin} />}
           <FormLine label="Here by agrees and sold my vehicle" value={vehicle} />
           <FormLine label="Registration No" value={data.vehiclePlateNumber} />
           <FormLine label="Engine No" value={data.vehicleEngineNumber} />
           <FormLine label="Chasis No" value={data.vehicleChassis} />
           <FormLine label="To" value={buyer} />
           <FormLine label="of" value={data.buyerAddress} />
+          {data.buyerNin?.trim() && <FormLine label="NIN" value={data.buyerNin} />}
           <FormLine label="For the sum of" value={price > 0 ? numberToWords(price) : ""} />
 
           <div className="flex items-end gap-1.5 text-[11px] text-black">
@@ -477,11 +484,13 @@ export default function SalesAgreement() {
         seller_address: form.sellerAddress.trim() || null,
         seller_phone: form.sellerPhone.trim() || null,
         seller_id_type: form.sellerIdType.trim() || null,
+        seller_nin: form.sellerNin.trim() || null,
         buyer_title: form.buyerTitle.trim() || null,
         buyer_name: form.buyerName.trim(),
         buyer_address: form.buyerAddress.trim() || null,
         buyer_phone: form.buyerPhone.trim() || null,
         buyer_id_type: form.buyerIdType.trim() || null,
+        buyer_nin: form.buyerNin.trim() || null,
         vehicle_make: form.vehicleMake.trim(),
         vehicle_year_model: form.vehicleYearModel.trim() || null,
         vehicle_color: form.vehicleColor.trim() || null,
@@ -627,6 +636,26 @@ export default function SalesAgreement() {
           filename={`sales-agreement-${(previewData.buyerName || "document").replace(/\s+/g, "-").toLowerCase()}`}
           entity={ENTITY}
           recordId={previewId}
+          archive={{
+            type: "Sales Agreement",
+            title: `Sales Agreement — ${previewData.sellerName || "Seller"} to ${previewData.buyerName || "Buyer"}`,
+            number: previewData.documentNo || null,
+            docDate: previewData.agreementDate || null,
+            person: previewData.buyerName || null,
+            phone: previewData.buyerPhone || null,
+            nin: previewData.buyerNin || null,
+            vehicle: [previewData.vehicleYearModel, previewData.vehicleMake, previewData.vehicleColor, previewData.vehicleChassis]
+              .filter(Boolean).join(" ") || null,
+            details: {
+              buyer: { name: previewData.buyerName, phone: previewData.buyerPhone, address: previewData.buyerAddress, nin: previewData.buyerNin, id: previewData.buyerIdType },
+              seller: { name: previewData.sellerName, phone: previewData.sellerPhone, address: previewData.sellerAddress, nin: previewData.sellerNin, id: previewData.sellerIdType },
+              vehicle: {
+                make: previewData.vehicleMake, year_model: previewData.vehicleYearModel, colour: previewData.vehicleColor,
+                registration: previewData.vehiclePlateNumber, engine_number: previewData.vehicleEngineNumber, chassis: previewData.vehicleChassis,
+              },
+              agreement: previewData,
+            },
+          }}
           accentClass="bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20"
           onBack={() => setMode("edit")}
         />
@@ -780,6 +809,12 @@ export default function SalesAgreement() {
                         placeholder="Company RC no, or the owner's ID"
                         className="rounded-xl h-11 bg-background/50 border-white/10" />
                     </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">NIN <span className="opacity-70">(optional)</span></Label>
+                      <Input name="sellerNin" value={form.sellerNin} onChange={handleChange}
+                        inputMode="numeric" autoComplete="off" placeholder="Seller's National Identification Number"
+                        className="rounded-xl h-11 bg-background/50 border-white/10" />
+                    </div>
                     <div className="md:col-span-2">
                       <CustomerMatchHint
                         name={form.sellerName}
@@ -789,6 +824,7 @@ export default function SalesAgreement() {
                           sellerName: c.name ?? prev.sellerName,
                           sellerPhone: c.phone ?? prev.sellerPhone,
                           sellerAddress: c.address ?? prev.sellerAddress,
+                          sellerNin: (c as any).nin ?? prev.sellerNin,
                         }))}
                       />
                     </div>
@@ -836,6 +872,12 @@ export default function SalesAgreement() {
                       <Input name="buyerIdType" value={form.buyerIdType} onChange={handleChange}
                         className="rounded-xl h-11 bg-background/50 border-white/10" />
                     </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">NIN <span className="opacity-70">(optional)</span></Label>
+                      <Input name="buyerNin" value={form.buyerNin} onChange={handleChange}
+                        inputMode="numeric" autoComplete="off" placeholder="Buyer's National Identification Number"
+                        className="rounded-xl h-11 bg-background/50 border-white/10" />
+                    </div>
                     <div className="md:col-span-2">
                       <CustomerMatchHint
                         name={form.buyerName}
@@ -845,6 +887,7 @@ export default function SalesAgreement() {
                           buyerName: c.name ?? prev.buyerName,
                           buyerPhone: c.phone ?? prev.buyerPhone,
                           buyerAddress: c.address ?? prev.buyerAddress,
+                          buyerNin: (c as any).nin ?? prev.buyerNin,
                         }))}
                       />
                     </div>

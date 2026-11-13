@@ -25,6 +25,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { MODERN_FONT, PrintHeader, PrintWatermark } from "@/components/PrintHeader";
 import { DocumentToolbar } from "@/components/DocumentToolbar";
+import { omitKeys, withSchemaFallback } from "@/lib/dbCompat";
 import { PrintSheet } from "@/components/PrintSheet";
 import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -39,6 +40,7 @@ type PropertyIntake = {
   form_date: string | null;
   full_name: string;
   phone_number: string | null;
+  nin?: string | null;
   residential_address: string | null;
   property_type: string | null;
   property_type_other: string | null;
@@ -109,6 +111,7 @@ const EMPTY_FORM = {
   formDate: new Date().toISOString().split("T")[0],
   fullName: "",
   phoneNumber: "",
+  nin: "",
   residentialAddress: "",
   propertyType: "",
   propertyTypeOther: "",
@@ -221,12 +224,12 @@ export default function PropertyIntake() {
 
   const saveMutation = useMutation({
     mutationFn: async (payload: TablesInsert<"property_intakes">) => {
-      const { data, error } = await supabase
-        .from("property_intakes")
-        .upsert([payload])
-        .select()
-        .single();
-      if (error) throw error;
+      // Until the NIN migration is run, save everything else rather than fail
+      const data = await withSchemaFallback(
+        () => supabase.from("property_intakes").upsert([payload]).select().single(),
+        () => supabase.from("property_intakes").upsert([omitKeys(payload, ["nin"])]).select().single(),
+        ["nin"],
+      );
       return data as PropertyIntake;
     },
     onSuccess: (data) => {
@@ -297,6 +300,7 @@ export default function PropertyIntake() {
       form_date: formData.formDate || new Date().toISOString().split("T")[0],
       full_name: formData.fullName,
       phone_number: formData.phoneNumber,
+      nin: formData.nin.trim() || null,
       residential_address: formData.residentialAddress,
       property_type: formData.propertyType || null,
       property_type_other: formData.propertyTypeOther,
@@ -343,6 +347,7 @@ export default function PropertyIntake() {
       formDate: item.form_date || new Date().toISOString().split("T")[0],
       fullName: item.full_name || "",
       phoneNumber: item.phone_number || "",
+      nin: item.nin || "",
       residentialAddress: item.residential_address || "",
       propertyType: item.property_type || "",
       propertyTypeOther: item.property_type_other || "",
@@ -479,7 +484,7 @@ export default function PropertyIntake() {
     <Sheet page={1}>
       <PrintHeader />
       <div className="text-center my-6">
-        <h1 className="text-xl font-black text-black uppercase tracking-widest underline underline-offset-4">
+        <h1 className="inline-block pb-[3px] text-xl font-black text-black uppercase tracking-widest" style={{ borderBottom: "2px solid #000" }}>
           Property Intake &amp; Inspection Form
         </h1>
       </div>
@@ -500,6 +505,7 @@ export default function PropertyIntake() {
         <div className="space-y-1">
           <Field label="1. Full Name" value={formData.fullName} />
           <Field label="2. Phone Number" value={formData.phoneNumber} />
+          {formData.nin.trim() && <Field label="NIN" value={formData.nin} />}
           <Field label="3. Residential Address" value={formData.residentialAddress} />
         </div>
       </section>
@@ -633,6 +639,16 @@ export default function PropertyIntake() {
           filename={fileSlug}
           entity="Property Intake"
           recordId={editingId ?? undefined}
+          archive={{
+            type: "Property Intake",
+            title: `Property Intake ${formNumber ?? ""} — ${formData.fullName || "Client"}`.replace(/\s+/g, " "),
+            number: formNumber || null,
+            docDate: formData.formDate || null,
+            person: formData.fullName || null,
+            phone: formData.phoneNumber || null,
+            nin: formData.nin || null,
+            details: { client: { name: formData.fullName, phone: formData.phoneNumber, nin: formData.nin, address: formData.residentialAddress }, form: formData },
+          }}
           onBack={() => setMode("edit")}
           accentClass="bg-teal-500 hover:bg-teal-600 shadow-teal-500/20"
         />
@@ -724,6 +740,10 @@ export default function PropertyIntake() {
                         <Input name="phoneNumber" value={formData.phoneNumber} onChange={handleChange} placeholder="e.g. 0803..." className={inputClass} />
                       </div>
                       <div className="space-y-2">
+                        <Label className={labelClass}>NIN <span className="normal-case font-normal tracking-normal">(optional)</span></Label>
+                        <Input name="nin" value={formData.nin} onChange={handleChange} inputMode="numeric" autoComplete="off" placeholder="National Identification Number" className={inputClass} />
+                      </div>
+                      <div className="space-y-2">
                         <Label className={labelClass}>3. Residential Address</Label>
                         <Textarea name="residentialAddress" value={formData.residentialAddress} onChange={handleChange} placeholder="Current residential address" className="bg-background/50 border-white/10 rounded-xl min-h-[80px]" />
                       </div>
@@ -735,6 +755,7 @@ export default function PropertyIntake() {
                           fullName: c.name ?? prev.fullName,
                           phoneNumber: c.phone ?? prev.phoneNumber,
                           residentialAddress: c.address ?? prev.residentialAddress,
+                          nin: (c as any).nin ?? prev.nin,
                         }))}
                       />
                     </div>

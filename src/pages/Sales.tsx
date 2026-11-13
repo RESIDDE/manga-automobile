@@ -26,7 +26,8 @@ import {
 } from "@/components/ui/pagination";
 import { PlusCircle, Pencil, Trash2, Receipt, Download, Eye, FileText, Printer, DollarSign, Calendar, Search, Car, Users, QrCode, CheckCircle, AlertCircle, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
-import { exportToCSV, exportToJSON, printTable, downloadTableAsPDF } from "@/lib/exportHelpers";
+import { ArchiveToggle } from "@/components/ArchiveToggle";
+import { exportToCSV, exportToJSON } from "@/lib/exportHelpers";
 import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
 import { canCreate, canDelete, canEdit } from "@/lib/permissions";
@@ -67,8 +68,10 @@ import {
 import { PrintSheet } from "@/components/PrintSheet";
 import { RecordActions } from "@/components/RecordActions";
 import { DocumentToolbar } from "@/components/DocumentToolbar";
-import { downloadDocument, type DocFormat } from "@/lib/documentExport";
-import { firstWorkingSelect, warnOnce, withSchemaFallback } from "@/lib/dbCompat";
+import { SalesReportDocument, type SalesReportRow } from "@/components/SalesReportDocument";
+import { archiveSheet, type ArchiveMeta } from "@/lib/archive";
+import { downloadDocument, waitForImages, type DocFormat } from "@/lib/documentExport";
+import { firstWorkingSelect, omitKeys, warnOnce, withSchemaFallback } from "@/lib/dbCompat";
 
 /**
  * Columns the sales list actually renders. The signature columns are left out on
@@ -126,7 +129,7 @@ const emptyNewVehicle = {
 };
 
 export default function Sales() {
-  const { role } = useAuth();
+  const { role, profile } = useAuth();
   const { permissions } = usePermissions();
   const hasCreate = canCreate(role, "sales", permissions);
   const hasEdit = canEdit(role, "sales", permissions);
@@ -146,6 +149,9 @@ export default function Sales() {
   const [receiptType, setReceiptType] = useState<"all" | "sale" | "payment">("all");
   const [receiptPage, setReceiptPage] = useState(0);
   const [receiptSale, setReceiptSale] = useState<any>(null);
+  /** The sales report preview (letterhead, A4 pages, PDF / PNG / JPEG / print). */
+  const [report, setReport] = useState<{ title: string; scope: string; rows: SalesReportRow[]; file: string; autoPrint?: boolean } | null>(null);
+  const reportDocRef = useRef<HTMLDivElement>(null);
   const receiptDocRef = useRef<HTMLDivElement>(null);
   const [search, setSearch] = useState("");
   const [saleMonth, setSaleMonth] = useState(ALL_TIME);
@@ -157,7 +163,7 @@ export default function Sales() {
   const [page, setPage] = useState(0);
   const [isNewCustomer, setIsNewCustomer] = useState(false);
   const [newCustomer, setNewCustomer, clearNewCustomerDraft] = useFormPersistence(
-    "manga_sale_new_customer_draft", { name: "", phone: "", email: "", address: "" }
+    "manga_sale_new_customer_draft", { name: "", phone: "", email: "", address: "", nin: "" }
   );
   const [showNewVehicle, setShowNewVehicle] = useState(false);
   const [newVehicle, setNewVehicle, clearNewVehicleDraft] = useFormPersistence(
@@ -212,10 +218,26 @@ export default function Sales() {
 
   // "Receipt" sends the user straight to the print dialog; the preview stays
   // open underneath so they can re-print or download without going back.
+  // "Print Sales Report" opens the preview and goes straight to the print
+  // dialog, once the letterhead and watermark have loaded.
+  useEffect(() => {
+    if (!report?.autoPrint) return;
+    let cancelled = false;
+    const id = setTimeout(async () => {
+      await waitForImages(document.getElementById("print-portal"));
+      if (cancelled) return;
+      window.print();
+      archiveSheet(reportDocRef.current, reportArchiveMeta(report), "print");
+      setReport((prev) => (prev ? { ...prev, autoPrint: false } : prev));
+    }, 300);
+    return () => { cancelled = true; clearTimeout(id); };
+  }, [report]);
+
   useEffect(() => {
     if (!receiptSale?.autoPrint) return;
     const id = setTimeout(() => {
       window.print();
+      archiveSheet(receiptDocRef.current, receiptArchiveMeta(receiptSale.sale, receiptSale.payment), "print");
       setReceiptSale((prev: any) => (prev ? { ...prev, autoPrint: false } : prev));
     }, 450);
     return () => clearTimeout(id);
@@ -255,7 +277,8 @@ export default function Sales() {
   const { data: customers = [] } = useQuery({
     queryKey: ["customers"],
     queryFn: async () => {
-      const { data, error } = await supabase.from("customers").select("id, name, phone, email, address");
+      // "*": the archive keeps the full customer record (NIN included) with each receipt
+      const { data, error } = await supabase.from("customers").select("*");
       if (error) throw error;
       return data;
     },
@@ -539,18 +562,20 @@ export default function Sales() {
 
       if (isNewCustomer) {
         if (!newCustomer.name) throw new Error("Customer name is required");
-        const { data: nc, error: nce } = await supabase
-          .from("customers")
-          .insert({
-            name: newCustomer.name,
-            phone: newCustomer.phone || null,
-            email: newCustomer.email || null,
-            address: newCustomer.address || null
-          })
-          .select()
-          .single();
-        if (nce) throw nce;
-        actualCustomerId = nc.id;
+        const customerRow = {
+          name: newCustomer.name,
+          phone: newCustomer.phone || null,
+          email: newCustomer.email || null,
+          address: newCustomer.address || null,
+          nin: (newCustomer.nin ?? "").trim() || null,
+        };
+        // Until the NIN migration is run, create the customer without it
+        const nc = await withSchemaFallback(
+          () => supabase.from("customers").insert(customerRow).select().single(),
+          () => supabase.from("customers").insert(omitKeys(customerRow, ["nin"])).select().single(),
+          ["nin"],
+        );
+        actualCustomerId = (nc as any).id;
       }
 
       const basePayload = {
@@ -786,7 +811,7 @@ export default function Sales() {
     clearNewVehicleDraft();
     setForm(emptyForm);
     setIsNewCustomer(false);
-    setNewCustomer({ name: "", phone: "", email: "", address: "" });
+    setNewCustomer({ name: "", phone: "", email: "", address: "", nin: "" });
     setNewVehicle({ ...emptyNewVehicle });
     setShowNewVehicle(false);
     setVehicleSearch("");
@@ -830,53 +855,98 @@ export default function Sales() {
 
   const canSubmit = form.selected_vehicle_ids.length > 0 && form.customer_id && form.sale_price && !upsertMutation.isPending;
 
+  /** What the Document Archive records with a receipt: the full customer and vehicle records. */
+  const receiptArchiveMeta = (sale: any, payment: any = null): ArchiveMeta => {
+    const customer: any = customerObjMap[sale.customer_id] ?? null;
+    const ids = saleVehicleIds(sale);
+    const number = receiptNumber(payment ? payment.id : sale.id, payment ? (payment.payment_date ?? null) : (sale.sale_date ?? null));
+    return {
+      type: "Receipt",
+      title: `Receipt ${number}${customer?.name ? ` — ${customer.name}` : ""}`,
+      number,
+      docDate: payment?.payment_date ?? sale.sale_date ?? null,
+      person: customer?.name ?? null,
+      phone: customer?.phone ?? null,
+      nin: customer?.nin ?? null,
+      vehicle: ids.map((vid) => vehicleMap[vid]).filter(Boolean).join(", ") || null,
+      entityId: sale.id,
+      details: {
+        customer,
+        vehicles: ids.map((vid) => vehicleObjMap[vid]).filter(Boolean),
+        sale: {
+          sale_number: sale.sale_number ?? null, sale_date: sale.sale_date, sale_price: sale.sale_price,
+          payment_method: sale.payment_method ?? null, notes: sale.notes ?? null,
+        },
+        payment: payment ? { amount: payment.amount, payment_date: payment.payment_date, payment_method: payment.payment_method } : null,
+      },
+    };
+  };
+
+  const reportArchiveMeta = (r: { title: string; scope: string; rows: SalesReportRow[] }): ArchiveMeta => ({
+    type: "Sales Report",
+    title: `${r.title} — ${r.scope}`,
+    details: { sales: r.rows.map(({ id: _id, ...row }) => row) },
+  });
+
+  /** Words for the filters in force, printed under the report title. */
+  const filterScope = () => {
+    const parts: string[] = [];
+    parts.push(saleMonth === ALL_TIME ? "All time" : (saleMonths.find((m) => m.value === saleMonth)?.label ?? saleMonth));
+    if (saleWeek !== ALL_WEEKS) parts.push(WEEK_OPTIONS.find((w) => w.value === saleWeek)?.label ?? `Week ${saleWeek}`);
+    if (paymentFilter !== "all") parts.push(paymentFilter === "paid" ? "Paid in full" : "Outstanding");
+    if (sourceFilter !== "all") parts.push(`Source: ${sourceFilter}`);
+    if (search.trim()) parts.push(`Search: “${search.trim()}”`);
+    return parts.join(" · ");
+  };
+
+  const reportRows = (list: any[]): SalesReportRow[] =>
+    [...list]
+      .sort((a, b) => new Date(a.sale_date || a.created_at).getTime() - new Date(b.sale_date || b.created_at).getTime())
+      .map((s: any) => {
+        const state = derivePaymentState(s);
+        return {
+          id: s.id,
+          saleNo: s.sale_number ? `#${s.sale_number}` : s.id.slice(0, 6).toUpperCase(),
+          date: s.sale_date || s.created_at || null,
+          vehicle: saleVehicleIds(s).map((vid) => vehicleMap[vid] || "Vehicle").join(", ") || "—",
+          customer: customerMap[s.customer_id] || "—",
+          price: state.total,
+          paid: state.totalPaid,
+          balance: state.balance,
+        };
+      });
+
+  /** Every export works on what is on screen: the filtered list, not all sales. */
   const handleExportCSV = () => {
-    const rows = sales.map((s) => ({
-      Vehicle: vehicleMap[s.vehicle_id] || s.vehicle_id,
-      Customer: customerMap[s.customer_id] || s.customer_id,
-      "Sale Price": s.sale_price,
-      "Sale Date": s.sale_date,
-      Notes: s.notes || "",
-    }));
-    exportToCSV(rows, "sales_export");
+    if (!filtered.length) return toast.error("No sales match the current filters");
+    exportToCSV(reportRows(filtered).map((r) => ({
+      "Sale #": r.saleNo,
+      Date: r.date ? new Date(r.date).toLocaleDateString() : "",
+      Vehicle: r.vehicle,
+      Customer: r.customer,
+      "Sale Price": r.price,
+      Paid: r.paid,
+      Balance: r.balance,
+    })), "sales_export");
+    logAction("EXPORT", "Sale", undefined, { format: "csv", rows: filtered.length });
   };
 
   const handleExportJSON = () => {
-    exportToJSON(sales, "sales_export");
+    if (!filtered.length) return toast.error("No sales match the current filters");
+    exportToJSON(filtered, "sales_export");
+    logAction("EXPORT", "Sale", undefined, { format: "json", rows: filtered.length });
   };
 
-  const handlePrint = () => {
-    const rows = sales.map((s) => ({
-      vehicle: vehicleMap[s.vehicle_id] || s.vehicle_id,
-      customer: customerMap[s.customer_id] || s.customer_id,
-      sale_price: `₦${Number(s.sale_price).toLocaleString()}`,
-      sale_date: new Date(s.sale_date).toLocaleDateString(),
-      notes: s.notes || "",
-    }));
-    printTable("Sales Report — Manga Automobiles", rows, [
-      { key: "vehicle", label: "Vehicle" },
-      { key: "customer", label: "Customer" },
-      { key: "sale_price", label: "Sale Price" },
-      { key: "sale_date", label: "Sale Date" },
-      { key: "notes", label: "Notes" },
-    ]);
-  };
-
-  const handleDownloadSummaryPDF = async () => {
-    const rows = sales.map((s) => ({
-      vehicle: vehicleMap[s.vehicle_id] || s.vehicle_id,
-      customer: customerMap[s.customer_id] || s.customer_id,
-      sale_price: `₦${Number(s.sale_price).toLocaleString()}`,
-      sale_date: new Date(s.sale_date).toLocaleDateString(),
-      notes: s.notes || "",
-    }));
-    await downloadTableAsPDF("Sales Summary — Manga Automobiles", rows, [
-      { key: "vehicle", label: "Vehicle" },
-      { key: "customer", label: "Customer" },
-      { key: "sale_price", label: "Price" },
-      { key: "sale_date", label: "Date" },
-      { key: "notes", label: "Notes" },
-    ]);
+  /** Opens the report preview; its toolbar downloads PDF / PNG / JPEG or prints. */
+  const openSalesReport = (autoPrint = false) => {
+    if (!filtered.length) return toast.error("No sales match the current filters");
+    setReport({
+      autoPrint,
+      title: "Sales Report",
+      scope: filterScope(),
+      rows: reportRows(filtered),
+      file: `sales-report-${new Date().toISOString().slice(0, 10)}`,
+    });
   };
 
   /**
@@ -953,6 +1023,7 @@ export default function Sales() {
         format
       );
       logAction("EXPORT", "Receipt", sale.id, { format, payment: !!payment });
+      await archiveSheet(host, receiptArchiveMeta(sale, payment), format);
     } finally {
       root.unmount();
       host.remove();
@@ -981,20 +1052,12 @@ export default function Sales() {
 
     try {
       if (exportMode === "summary") {
-        const rows = toExport.map((s) => ({
-          sale_no: (s as any).sale_number ? `#${(s as any).sale_number}` : s.id.slice(0, 4),
-          vehicle: vehicleMap[s.vehicle_id] || s.vehicle_id,
-          customer: customerMap[s.customer_id] || s.customer_id,
-          sale_price: `₦${Number(s.sale_price).toLocaleString()}`,
-          sale_date: new Date(s.sale_date).toLocaleDateString(),
-        }));
-        await downloadTableAsPDF(`Sales Summary (${exportDates.start} to ${exportDates.end})`, rows, [
-          { key: "sale_no", label: "Sale #" },
-          { key: "vehicle", label: "Vehicle" },
-          { key: "customer", label: "Customer" },
-          { key: "sale_price", label: "Price" },
-          { key: "sale_date", label: "Date" },
-        ]);
+        setReport({
+          title: "Sales Summary",
+          scope: `${new Date(exportDates.start).toLocaleDateString()} – ${new Date(exportDates.end).toLocaleDateString()}`,
+          rows: reportRows(toExport),
+          file: `sales-summary-${exportDates.start}-to-${exportDates.end}`,
+        });
       } else {
         toast.info(`Generating ${toExport.length} documents... Please wait.`);
         // For individual documents, we loop and trigger downloads
@@ -1022,6 +1085,30 @@ export default function Sales() {
   const handleDownloadJPEG = (sale: any) => downloadReceipt(sale, "jpeg");
 
   // ── Receipt preview replaces the page, like the other documents ───────────
+  if (report) {
+    return (
+      <div className="animate-fade-in">
+        <DocumentToolbar
+          documentRef={reportDocRef}
+          filename={report.file}
+          entity="Sales Report"
+          archive={reportArchiveMeta(report)}
+          backLabel="Back to Sales"
+          accentClass="bg-violet-500 hover:bg-violet-600 shadow-violet-500/20"
+          onBack={() => setReport(null)}
+        />
+        <PrintSheet ref={reportDocRef}>
+          <SalesReportDocument
+            title={report.title}
+            scope={report.scope}
+            rows={report.rows}
+            preparedBy={profile?.display_name ?? null}
+          />
+        </PrintSheet>
+      </div>
+    );
+  }
+
   if (receiptSale) {
     const { sale, payment, paymentIndex } = receiptSale;
     // Merge in anything newer from the list (a payment added a moment ago) while
@@ -1038,6 +1125,7 @@ export default function Sales() {
           )}`}
           entity="Receipt"
           recordId={live.id}
+          archive={receiptArchiveMeta(live, payment)}
           backLabel="Back to Sales"
           accentClass="bg-violet-500 hover:bg-violet-600 shadow-violet-500/20"
           onBack={() => setReceiptSale(null)}
@@ -1073,7 +1161,8 @@ export default function Sales() {
             Track vehicle sales, generate receipts, and manage sales history.
           </p>
         </div>
-        <div className="flex gap-2 shrink-0">
+        <div className="flex flex-wrap gap-2 shrink-0">
+          <ArchiveToggle className="h-11" />
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="lg" className="rounded-2xl glass-panel border-white/10 hover:bg-white/5 transition-all">
@@ -1087,14 +1176,14 @@ export default function Sales() {
               <DropdownMenuItem onClick={handleExportJSON} className="rounded-lg cursor-pointer">
                 <FileText className="mr-2 h-4 w-4 text-muted-foreground" /> Export to JSON
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleDownloadSummaryPDF} className="rounded-lg cursor-pointer text-violet-500 font-bold">
-                <FileText className="mr-2 h-4 w-4" /> Download PDF Summary (All)
+              <DropdownMenuItem onClick={() => openSalesReport()} className="rounded-lg cursor-pointer text-violet-500 font-bold">
+                <FileText className="mr-2 h-4 w-4" /> Sales Report — PDF, PNG, JPEG
               </DropdownMenuItem>
               <DropdownMenuItem onClick={() => setExportDialogOpen(true)} className="rounded-lg cursor-pointer text-emerald-500 font-bold">
                 <Download className="mr-2 h-4 w-4" /> Advanced Bulk Export (Date Range)
               </DropdownMenuItem>
-              <DropdownMenuItem onClick={handlePrint} className="rounded-lg cursor-pointer text-muted-foreground py-2 border-t border-white/5 mt-1">
-                <Printer className="mr-2 h-4 w-4" /> Print / Save PDF (Dialog)
+              <DropdownMenuItem onClick={() => openSalesReport(true)} className="rounded-lg cursor-pointer text-muted-foreground py-2 border-t border-white/5 mt-1">
+                <Printer className="mr-2 h-4 w-4" /> Print Sales Report
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -1736,6 +1825,16 @@ export default function Sales() {
                       onChange={(e) => setNewCustomer({ ...newCustomer, address: e.target.value })}
                     />
                   </div>
+                  <div className="space-y-1 sm:col-span-2">
+                    <Label className="text-[10px] uppercase font-bold text-muted-foreground">NIN <span className="normal-case font-normal">(optional)</span></Label>
+                    <Input
+                      placeholder="National Identification Number"
+                      inputMode="numeric" autoComplete="off"
+                      className="h-9 rounded-lg bg-background/50 border-white/10"
+                      value={newCustomer.nin ?? ""}
+                      onChange={(e) => setNewCustomer({ ...newCustomer, nin: e.target.value })}
+                    />
+                  </div>
                   <div className="sm:col-span-2">
                     <CustomerMatchHint
                       name={newCustomer.name}
@@ -1745,7 +1844,7 @@ export default function Sales() {
                         setIsNewCustomer(false);
                         setForm((prev) => ({ ...prev, customer_id: c.id }));
                         clearNewCustomerDraft();
-                        setNewCustomer({ name: "", phone: "", email: "", address: "" });
+                        setNewCustomer({ name: "", phone: "", email: "", address: "", nin: "" });
                         toast.success(`Using the existing record for ${c.name}`);
                       }}
                     />
