@@ -5,6 +5,7 @@ import { getPrintFooterHTML } from "@/components/PrintFooter";
 const loadHtml2Canvas = async () => (await import("html2canvas")).default;
 const loadJsPDF = async () => (await import("jspdf")).jsPDF;
 import { archivePage, type ArchiveAction } from "@/lib/archive";
+import { prepareCaptureClone } from "@/lib/documentExport";
 
 /** Files these older table printouts in the Document Archive too. */
 function fileInArchive(html: string, fallbackTitle: string, action: ArchiveAction) {
@@ -37,6 +38,7 @@ export async function downloadAsPDF(html: string, filename: string) {
       useCORS: true,
       logging: false,
       backgroundColor: "#ffffff",
+      onclone: prepareCaptureClone, // letter-by-letter text: see documentExport.ts
     });
     
     const imgData = canvas.toDataURL("image/png");
@@ -177,6 +179,7 @@ export async function downloadAsPNG(html: string, filename: string) {
       useCORS: true,
       logging: false,
       backgroundColor: "#ffffff",
+      onclone: prepareCaptureClone, // letter-by-letter text: see documentExport.ts
     });
     
     const link = document.createElement("a");

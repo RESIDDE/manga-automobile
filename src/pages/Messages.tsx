@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, isToday, isYesterday } from "date-fns";
 import { ArrowLeft, Hash, ImagePlus, Loader2, MessageSquarePlus, Mic, Paperclip, Search, Send, Trash2, Users } from "lucide-react";
 import { toast } from "sonner";
+import { confirmDelete } from "@/components/DeleteConfirm";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import {
@@ -211,6 +212,12 @@ export default function Messages() {
   };
 
   const deleteMessage = async (id: string) => {
+    const ok = await confirmDelete({
+      title: "Delete this message?",
+      description: "It disappears for everyone in the conversation, with any photo, voice note or file attached.",
+      confirmLabel: "Delete message",
+    });
+    if (!ok) return;
     const msg = messages.find((m) => m.id === id);
     const { error } = await db.from("chat_messages").delete().eq("id", id);
     if (error) return toast.error(error.message);

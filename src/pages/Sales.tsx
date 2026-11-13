@@ -26,6 +26,7 @@ import {
 } from "@/components/ui/pagination";
 import { PlusCircle, Pencil, Trash2, Receipt, Download, Eye, FileText, Printer, DollarSign, Calendar, Search, Car, Users, QrCode, CheckCircle, AlertCircle, MoreHorizontal } from "lucide-react";
 import { toast } from "sonner";
+import { DeleteConfirmDialog } from "@/components/DeleteConfirm";
 import { ArchiveToggle } from "@/components/ArchiveToggle";
 import { exportToCSV, exportToJSON } from "@/lib/exportHelpers";
 import { useAuth } from "@/hooks/useAuth";
@@ -2204,21 +2205,14 @@ export default function Sales() {
       </Dialog>
 
       {/* Delete Confirmation */}
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent className="rounded-3xl glass-panel border-white/10 p-6 shadow-2xl">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-xl font-bold text-foreground">Delete Sale</AlertDialogTitle>
-            <AlertDialogDescription className="text-base text-muted-foreground">This action cannot be undone and will permanently remove the sale record.</AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel className="rounded-xl border-white/10 text-foreground hover:bg-white/5 sm:mt-0">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => { if (deleteId) deleteMutation.mutate(deleteId); setDeleteId(null); }}
-              className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-lg shadow-destructive/20 border-none"
-            >Delete Forever</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={!!deleteId}
+        onOpenChange={(open) => { if (!open) setDeleteId(null); }}
+        title="Delete this sale?"
+        description="The sale record and its payments will be permanently removed."
+        confirmLabel="Delete sale"
+        onConfirm={() => { if (deleteId) deleteMutation.mutate(deleteId); }}
+      />
 
       {/* ── Payment history ─────────────────────────────────────────────── */}
       <Dialog open={!!paymentsSale} onOpenChange={(open) => !open && setPaymentsSale(null)}>

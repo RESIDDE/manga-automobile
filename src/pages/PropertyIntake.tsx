@@ -23,6 +23,7 @@ import {
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
+import { confirmDelete } from "@/components/DeleteConfirm";
 import { MODERN_FONT, PrintHeader, PrintWatermark } from "@/components/PrintHeader";
 import { DocumentToolbar } from "@/components/DocumentToolbar";
 import { omitKeys, withSchemaFallback } from "@/lib/dbCompat";
@@ -1218,7 +1219,15 @@ export default function PropertyIntake() {
                                   },
                                   {
                                     label: "Delete form", icon: Trash2, destructive: true,
-                                    onClick: () => deleteMutation.mutate(item.id), show: hasDelete,
+                                    onClick: async () => {
+                                      const ok = await confirmDelete({
+                                        title: `Delete property form ${item.form_number ?? ""}?`.replace(/\s+\?/, "?"),
+                                        description: `${item.full_name || "This client"}'s intake form is removed permanently.`,
+                                        confirmLabel: "Delete form",
+                                      });
+                                      if (ok) deleteMutation.mutate(item.id);
+                                    },
+                                    show: hasDelete,
                                   },
                                 ]}
                               />

@@ -39,6 +39,7 @@ import {
   CalendarDays
 } from "lucide-react";
 import { toast } from "sonner";
+import { confirmDelete } from "@/components/DeleteConfirm";
 import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
 import { canDelete, canEdit } from "@/lib/permissions";
@@ -168,33 +169,21 @@ export default function VehicleDetail() {
                   Edit Details
                 </Link>
               </Button>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="outline" className="rounded-2xl h-12 px-6 border-destructive/20 text-destructive hover:bg-destructive/5">
-                    <Trash2 className="mr-2 h-4 w-4" />
-                    Delete
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent className="glass-panel border-white/10 rounded-3xl">
-                  <AlertDialogHeader>
-                    <AlertDialogTitle className="text-xl">Are you absolutely sure?</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      This action cannot be undone. This will permanently delete the 
-                      <strong> {vehicle.year} {vehicle.make} {vehicle.model} </strong> 
-                      from your inventory database.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel className="rounded-xl">Cancel</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={() => deleteMutation.mutate()}
-                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90 rounded-xl"
-                    >
-                      Delete Vehicle
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              <Button
+                variant="outline"
+                className="rounded-2xl h-12 px-6 border-destructive/20 text-destructive hover:bg-destructive/5"
+                onClick={async () => {
+                  const ok = await confirmDelete({
+                    title: `Delete the ${vehicle.year} ${vehicle.make} ${vehicle.model}?`,
+                    description: "The vehicle is permanently removed from your inventory, with its photos.",
+                    confirmLabel: "Delete vehicle",
+                  });
+                  if (ok) deleteMutation.mutate();
+                }}
+              >
+                <Trash2 className="mr-2 h-4 w-4" />
+                Delete
+              </Button>
             </>
           )}
         </div>

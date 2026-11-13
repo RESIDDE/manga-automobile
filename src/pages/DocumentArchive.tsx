@@ -17,7 +17,7 @@ import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { COMPANY_COPY, archiveSrcDoc, type ArchiveRecord } from "@/lib/archive";
-import { captureDocumentElement, saveBlob, type DocFormat } from "@/lib/documentExport";
+import { captureDocumentElement, captureOptions, saveBlob, type DocFormat } from "@/lib/documentExport";
 import { exportToCSV } from "@/lib/exportHelpers";
 import { logAction } from "@/lib/logger";
 import { cn } from "@/lib/utils";
@@ -287,10 +287,7 @@ export default function DocumentArchive() {
         const sheets = Array.from(doc.querySelectorAll<HTMLElement>(".print-document-page"));
         const parts = record.html_kind === "sheet" && sheets.length ? sheets : [doc.body];
         for (const part of parts) {
-          const canvas = await html2canvas(part, {
-            scale: 2, useCORS: true, logging: false, backgroundColor: "#ffffff",
-            windowWidth: part.scrollWidth, windowHeight: part.scrollHeight,
-          });
+          const canvas = await html2canvas(part, captureOptions(part));
           if (!first) pdf.addPage("a4", "portrait");
           first = false;
           let w = W, h = (canvas.height * W) / canvas.width;

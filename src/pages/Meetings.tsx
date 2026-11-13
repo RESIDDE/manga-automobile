@@ -24,6 +24,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
+import { confirmDelete } from "@/components/DeleteConfirm";
 import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
 import { canCreate, canDelete, canEdit } from "@/lib/permissions";
@@ -410,10 +411,13 @@ export default function Meetings() {
                       },
                       {
                         label: "Delete request", icon: Trash2, destructive: true, show: hasDelete,
-                        onClick: () => {
-                          if (confirm("Are you sure you want to delete this record?")) {
-                            deleteMutation.mutate(m.id);
-                          }
+                        onClick: async () => {
+                          const ok = await confirmDelete({
+                            title: "Delete this meeting request?",
+                            description: "The request and its details are removed permanently.",
+                            confirmLabel: "Delete request",
+                          });
+                          if (ok) deleteMutation.mutate(m.id);
                         },
                       },
                     ]}

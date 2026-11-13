@@ -4,6 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { AtSign, Bell, Check, CheckCheck, Lock, MessageSquare, Tag, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { confirmDelete } from "@/components/DeleteConfirm";
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { useFeature } from "@/hooks/usePermissions";
@@ -136,6 +137,12 @@ export function CollabDock() {
   };
 
   const removeTag = async (t: PageTag) => {
+    const ok = await confirmDelete({
+      title: "Withdraw this tag?",
+      description: "The note is deleted for you and for the person you tagged.",
+      confirmLabel: "Withdraw tag",
+    });
+    if (!ok) return;
     const { error } = await db.from("page_tags").delete().eq("id", t.id);
     if (error) return toast.error(error.message);
     queryClient.invalidateQueries({ queryKey: ["page-tags"] });

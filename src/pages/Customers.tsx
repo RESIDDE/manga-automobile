@@ -22,6 +22,7 @@ import { PlusCircle, Pencil, Trash2, Users, Phone, Mail, MapPin, Search, Downloa
 import { omitKeys, warnOnce, withSchemaFallback } from "@/lib/dbCompat";
 import { exportPhoneNumbers } from "@/lib/phoneExport";
 import { toast } from "sonner";
+import { DeleteConfirmDialog } from "@/components/DeleteConfirm";
 import { SignaturePad } from "@/components/SignaturePad";
 import { useAuth } from "@/hooks/useAuth";
 import { usePermissions } from "@/hooks/usePermissions";
@@ -382,22 +383,14 @@ export default function Customers() {
       </Dialog>
 
       {/* Delete Confirmation */}
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent className="rounded-3xl glass-panel border-white/10 p-6 shadow-2xl">
-          <AlertDialogHeader>
-            <AlertDialogTitle className="text-xl font-bold text-foreground">Delete Customer</AlertDialogTitle>
-            <AlertDialogDescription className="text-base text-muted-foreground">
-              Are you sure you want to permanently delete this customer record? All associated data might be affected.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter className="mt-4 gap-2">
-            <AlertDialogCancel className="rounded-xl border-white/10 text-foreground hover:bg-white/5 sm:mt-0">Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={() => { if (deleteId) deleteMutation.mutate(deleteId); setDeleteId(null); }} className="rounded-xl bg-destructive text-destructive-foreground hover:bg-destructive/90 shadow-lg shadow-destructive/20 border-none">
-              Delete Forever
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={!!deleteId}
+        onOpenChange={(open) => { if (!open) setDeleteId(null); }}
+        title="Delete this customer?"
+        description="The customer record will be permanently deleted. Sales and documents that refer to them may be affected."
+        confirmLabel="Delete customer"
+        onConfirm={() => { if (deleteId) deleteMutation.mutate(deleteId); }}
+      />
     </div>
   );
 }

@@ -22,6 +22,7 @@ import {
   Receipt, Search, Trash2, Wallet, X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { DeleteConfirmDialog } from "@/components/DeleteConfirm";
 import { exportToCSV } from "@/lib/exportHelpers";
 import { DocumentToolbar } from "@/components/DocumentToolbar";
 import { PrintSheet } from "@/components/PrintSheet";
@@ -767,27 +768,14 @@ export default function Expenses() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deleteGroup} onOpenChange={() => setDeleteGroup(null)}>
-        <AlertDialogContent className="rounded-3xl glass-panel border-white/10">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete “{deleteGroup?.name}”?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Its {deleteGroup ? groupCount(deleteGroup) : 0} entries, worth{" "}
-              {formatNaira(deleteGroup ? groupTotal(deleteGroup) : 0)}, go with it.
-              This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl border-white/10">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteGroup && deleteMutation.mutate(deleteGroup)}
-              className="rounded-xl bg-destructive hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={!!deleteGroup}
+        onOpenChange={(open) => { if (!open) setDeleteGroup(null); }}
+        title={`Delete “${deleteGroup?.name ?? ""}”?`}
+        description={`Its ${deleteGroup ? groupCount(deleteGroup) : 0} entries, worth ${formatNaira(deleteGroup ? groupTotal(deleteGroup) : 0)}, go with it.`}
+        confirmLabel="Delete group"
+        onConfirm={() => { if (deleteGroup) deleteMutation.mutate(deleteGroup); }}
+      />
     </div>
   );
 }

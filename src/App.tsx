@@ -7,6 +7,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { AppLayout } from "@/components/AppLayout";
 import { PrintFitSync } from "@/components/PrintFitSync";
+import { DeleteConfirmHost } from "@/components/DeleteConfirm";
 import { RoleGuard, AdminGuard, FeatureGuard, DsaGuard } from "@/components/RoleGuard";
 import { AuthGuard, GuestGuard } from "@/components/AuthGuard";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
@@ -145,6 +146,7 @@ const App = () => (
       <Toaster />
       <Sonner />
       <PrintFitSync />
+      <DeleteConfirmHost />
       <BrowserRouter>
         <AuthProvider>
           <PermissionsRealtimeSync />

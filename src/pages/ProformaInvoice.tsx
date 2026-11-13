@@ -23,6 +23,7 @@ import {
   Trash2, Users, X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { DeleteConfirmDialog } from "@/components/DeleteConfirm";
 import { CurrencyInput } from "@/components/CurrencyInput";
 import { CustomPagination } from "@/components/CustomPagination";
 import { CustomerMatchHint } from "@/components/CustomerMatchHint";
@@ -1306,25 +1307,14 @@ export default function ProformaInvoice() {
         </DialogContent>
       </Dialog>
 
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent className="rounded-3xl glass-panel border-white/10">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this proforma invoice?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The quote and its line items will be removed. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl border-white/10">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
-              className="rounded-xl bg-destructive hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={!!deleteId}
+        onOpenChange={(open) => { if (!open) setDeleteId(null); }}
+        title="Delete this proforma invoice?"
+        description="The quote and its line items will be removed."
+        confirmLabel="Delete invoice"
+        onConfirm={() => { if (deleteId) deleteMutation.mutate(deleteId); }}
+      />
     </div>
   );
 }

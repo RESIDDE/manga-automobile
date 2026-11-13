@@ -23,6 +23,7 @@ import {
   Trash2, Warehouse,
 } from "lucide-react";
 import { toast } from "sonner";
+import { DeleteConfirmDialog } from "@/components/DeleteConfirm";
 import { SignaturePad } from "@/components/SignaturePad";
 import { CurrencyInput } from "@/components/CurrencyInput";
 import { CustomPagination } from "@/components/CustomPagination";
@@ -133,7 +134,7 @@ const money = (value: string) => parseFloat((value || "0").replace(/,/g, "")) ||
 // ─── The document ────────────────────────────────────────────────────────────
 // One component for the preview, the print output and every exported file.
 
-function ConsignmentDocument({ data }: { data: ConsignmentForm }) {
+export function ConsignmentDocument({ data }: { data: ConsignmentForm }) {
   const price = money(data.agreedPrice);
   const commission = money(data.commissionAmount);
   const charge = money(data.withdrawalCharge);
@@ -988,25 +989,14 @@ export default function ConsignmentAgreement() {
         </TabsContent>
       </Tabs>
 
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent className="rounded-3xl glass-panel border-white/10">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this agreement?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The consignment agreement will be removed from history. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl border-white/10">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
-              className="rounded-xl bg-destructive hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={!!deleteId}
+        onOpenChange={(open) => { if (!open) setDeleteId(null); }}
+        title="Delete this agreement?"
+        description="The consignment agreement will be removed from history."
+        confirmLabel="Delete agreement"
+        onConfirm={() => { if (deleteId) deleteMutation.mutate(deleteId); }}
+      />
     </div>
   );
 }

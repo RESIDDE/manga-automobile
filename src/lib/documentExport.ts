@@ -10,6 +10,59 @@ const loadJsPDF = async () => (await import("jspdf")).jsPDF;
 
 export type DocFormat = "pdf" | "png" | "jpeg";
 
+/**
+ * Runs on html2canvas's private copy of the page, just before it is drawn.
+ *
+ * html2canvas draws ordinary text one *word* at a time: each word starts at its
+ * on-screen position but is drawn with the canvas's own glyph widths. When the
+ * canvas font comes out even slightly wider than the screen's (it does in some
+ * browsers and settings), every long word spills into the space after it and
+ * the PDF reads "Safe keepingand custodyof the vehiclewhile…". Text that has
+ * letter-spacing is drawn one *letter* at a time instead, each at its exact
+ * on-screen position — which is why the spaced-out headings never broke.
+ *
+ * So every text element without letter-spacing gets 0.001px: below what
+ * layout can resolve (nothing moves on the page), but non-zero, which switches
+ * html2canvas to letter-by-letter placement. Only the copy is touched.
+ */
+export function prepareCaptureClone(_doc: Document, root: HTMLElement) {
+  const doc = root.ownerDocument;
+  const win = doc?.defaultView;
+  if (!doc || !win) return;
+
+  // Collect first, then wrap: wrapping while walking would revisit new nodes
+  const walker = doc.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const targets: Text[] = [];
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const text = n as Text;
+    const parent = text.parentElement;
+    if (!parent || !(text.textContent ?? "").trim()) continue;
+    const spacing = win.getComputedStyle(parent).letterSpacing;
+    if (!spacing || spacing === "normal" || parseFloat(spacing) === 0) targets.push(text);
+  }
+
+  // The text goes in its own span rather than styling the parent: a list item
+  // draws its "a." / "1." marker with its own letter-spacing, and changing it
+  // there put the marker on top of the first word.
+  for (const text of targets) {
+    const span = doc.createElement("span");
+    span.style.letterSpacing = "0.001px";
+    text.parentNode!.replaceChild(span, text);
+    span.appendChild(text);
+  }
+}
+
+/** The html2canvas settings every document capture uses. */
+export const captureOptions = (el: HTMLElement) => ({
+  scale: 2,
+  useCORS: true,
+  logging: false,
+  backgroundColor: "#ffffff",
+  windowWidth: el.scrollWidth,
+  windowHeight: el.scrollHeight,
+  onclone: prepareCaptureClone,
+});
+
 /** True when the app is running as an installed/standalone PWA (no print dialog on iOS). */
 export function isStandaloneApp(): boolean {
   if (typeof window === "undefined") return false;
@@ -34,14 +87,7 @@ export async function captureDocumentElement(
   if (format === "pdf" && sheets.length > 1) return capturePagedPdf(sheets);
 
   const html2canvas = await loadHtml2Canvas();
-  const canvas = await html2canvas(el, {
-    scale: 2,
-    useCORS: true,
-    logging: false,
-    backgroundColor: "#ffffff",
-    windowWidth: el.scrollWidth,
-    windowHeight: el.scrollHeight,
-  });
+  const canvas = await html2canvas(el, captureOptions(el));
 
   if (format === "pdf") {
     // Page is the size of the captured content, so nothing is cropped or padded
@@ -80,14 +126,7 @@ async function capturePagedPdf(sheets: HTMLElement[]): Promise<Blob> {
 
   for (let i = 0; i < sheets.length; i++) {
     const sheet = sheets[i];
-    const canvas = await html2canvas(sheet, {
-      scale: 2,
-      useCORS: true,
-      logging: false,
-      backgroundColor: "#ffffff",
-      windowWidth: sheet.scrollWidth,
-      windowHeight: sheet.scrollHeight,
-    });
+    const canvas = await html2canvas(sheet, captureOptions(sheet));
     if (i > 0) pdf.addPage("a4", "portrait");
     // Fill the page width; a sheet that ran long is shrunk to fit the height
     let w = A4_W;

@@ -335,3 +335,14 @@ main, [role="dialog"], [data-radix-scroll-area-viewport] {
 /* Screen edges: notch / Dynamic Island at the top, home bar at the bottom */
 .safe-top { padding-top: env(safe-area-inset-top, 0px); }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+
+/* ─── PDF / PNG capture (html2canvas) ──────────────────────────────────────
+   To find where text sits on its line, html2canvas appends a hidden probe —
+   body > div[visibility:hidden] > span + 1px img — and measures the img.
+   Tailwind's preflight makes every img display:block, which drops the probe
+   onto the next line: the measured baseline came out too low, every word was
+   drawn a few pixels down, and the ruled lines ran through the text in
+   downloaded PDFs. Keeping the probe inline restores the real baseline. */
+body > div[style*="visibility: hidden"] > img {
+  display: inline !important;
+}

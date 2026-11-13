@@ -14,6 +14,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { confirmDelete, DELETE_PHRASE, phraseMatches } from "@/components/DeleteConfirm";
 import {
   Shield, ShieldAlert, ShieldCheck, User, Users, Settings2,
   ToggleLeft, Eye, Pencil, PlusCircle, RotateCcw, Crown, Lock, Activity,
@@ -69,6 +70,7 @@ export default function Settings() {
   const [roleToDelete, setRoleToDelete] = useState<string | null>(null);
   const [moveMembersTo, setMoveMembersTo] = useState("");
   const [deletingRole, setDeletingRole] = useState(false);
+  const [rolePhrase, setRolePhrase] = useState("");
   // Edits land in local state so several boxes can be ticked before saving
   const [localPermissions, setLocalPermissions] = useState<PermissionsMap | null>(null);
   const [permDirty, setPermDirty] = useState(false);
@@ -216,9 +218,12 @@ export default function Settings() {
   // ── Delete User Mutation ────────────────────────────────────────────────────
   const deleteUser = useMutation({
     mutationFn: async ({ userId, name }: { userId: string; name?: string }) => {
-      if (!window.confirm(`Are you sure you want to remove ${name || 'this user'}? This action cannot be undone.`)) {
-        throw new Error("Cancelled");
-      }
+      const ok = await confirmDelete({
+        title: `Remove ${name || "this user"}?`,
+        description: "Their account, role and profile are removed from the team. They will no longer be able to sign in.",
+        confirmLabel: "Remove user",
+      });
+      if (!ok) throw new Error("Cancelled");
       
       // Delete from user_roles and profiles
       // The user likely has a trigger or function to handle auth deletion if they mentioned "doing the sql"
@@ -455,7 +460,7 @@ export default function Settings() {
 
   /** Moves anyone holding the role to another one, then removes the role. */
   const confirmDeleteRole = async () => {
-    if (!roleToDelete) return;
+    if (!roleToDelete || !phraseMatches(rolePhrase)) return;
     const members = usersData.filter((u: any) => u.role === roleToDelete);
     if (members.length && !moveMembersTo) {
       toast.error("Choose which role their members move to");
@@ -886,7 +891,7 @@ export default function Settings() {
             {renameRole && !isUnrestricted(renameRole) ? (
               <Button
                 variant="ghost"
-                onClick={() => { setRoleToDelete(renameRole); setMoveMembersTo(""); }}
+                onClick={() => { setRoleToDelete(renameRole); setMoveMembersTo(""); setRolePhrase(""); }}
                 className="rounded-xl text-destructive hover:text-destructive hover:bg-destructive/10"
               >
                 <Trash2 className="w-4 h-4 mr-1.5" /> Delete role
@@ -943,6 +948,20 @@ export default function Settings() {
                 ) : (
                   <p className="text-sm">Nobody has this role.</p>
                 )}
+                <div className="space-y-1.5 pt-1">
+                  <Label htmlFor="role-delete-phrase" className="text-sm">
+                    To confirm, type <span className="font-mono font-bold text-destructive">{DELETE_PHRASE}</span> below.
+                  </Label>
+                  <Input
+                    id="role-delete-phrase"
+                    autoComplete="off" spellCheck={false}
+                    value={rolePhrase}
+                    onChange={(e) => setRolePhrase(e.target.value)}
+                    onPaste={(e) => e.preventDefault()}
+                    placeholder={DELETE_PHRASE}
+                    className="h-11 rounded-xl font-mono tracking-widest bg-background/50 border-white/10"
+                  />
+                </div>
               </div>
             );
           })()}
@@ -950,7 +969,7 @@ export default function Settings() {
             <Button variant="outline" disabled={deletingRole} onClick={() => setRoleToDelete(null)} className="rounded-xl border-white/10">
               Cancel
             </Button>
-            <Button variant="destructive" disabled={deletingRole} onClick={confirmDeleteRole} className="rounded-xl">
+            <Button variant="destructive" disabled={deletingRole || !phraseMatches(rolePhrase)} onClick={confirmDeleteRole} className="rounded-xl">
               {deletingRole ? "Deleting…" : "Delete role"}
             </Button>
           </DialogFooter>

@@ -23,6 +23,7 @@ import {
   Search, Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
+import { DeleteConfirmDialog } from "@/components/DeleteConfirm";
 import { SignaturePad } from "@/components/SignaturePad";
 import { CurrencyInput } from "@/components/CurrencyInput";
 import { CustomPagination } from "@/components/CustomPagination";
@@ -1244,25 +1245,14 @@ export default function SalesAgreement() {
         </TabsContent>
       </Tabs>
 
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent className="rounded-3xl glass-panel border-white/10">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this agreement?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The agreement will be removed from history. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl border-white/10">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
-              className="rounded-xl bg-destructive hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={!!deleteId}
+        onOpenChange={(open) => { if (!open) setDeleteId(null); }}
+        title="Delete this agreement?"
+        description="The agreement will be removed from history."
+        confirmLabel="Delete agreement"
+        onConfirm={() => { if (deleteId) deleteMutation.mutate(deleteId); }}
+      />
     </div>
   );
 }

@@ -28,6 +28,7 @@ import {
   Area, AreaChart, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis,
 } from "recharts";
 import { toast } from "sonner";
+import { DeleteConfirmDialog } from "@/components/DeleteConfirm";
 import { ArchiveToggle } from "@/components/ArchiveToggle";
 import { exportToCSV, exportToJSON, printTable, downloadTableAsPDF } from "@/lib/exportHelpers";
 import { CustomPagination } from "@/components/CustomPagination";
@@ -793,49 +794,25 @@ export default function VehiclesList() {
       />
 
       {/* Delete one */}
-      <AlertDialog open={!!deleteId} onOpenChange={() => setDeleteId(null)}>
-        <AlertDialogContent className="rounded-3xl glass-panel border-white/10">
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this vehicle?</AlertDialogTitle>
-            <AlertDialogDescription>
-              The vehicle and its images will be removed. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl border-white/10">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => deleteId && deleteMutation.mutate(deleteId)}
-              className="rounded-xl bg-destructive hover:bg-destructive/90"
-            >
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={!!deleteId}
+        onOpenChange={(open) => { if (!open) setDeleteId(null); }}
+        title="Delete this vehicle?"
+        description="The vehicle and its images will be removed."
+        confirmLabel="Delete vehicle"
+        onConfirm={() => { if (deleteId) deleteMutation.mutate(deleteId); }}
+      />
 
       {/* Delete all sold */}
-      <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
-        <AlertDialogContent className="rounded-3xl glass-panel border-white/10">
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete all {soldIds.length} sold vehicle{soldIds.length === 1 ? "" : "s"}?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Every stock vehicle marked Sold will be removed, along with its images. The sales
-              themselves are kept, but their vehicle links are cleared. This cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel className="rounded-xl border-white/10">Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => bulkDeleteMutation.mutate()}
-              className="rounded-xl bg-destructive hover:bg-destructive/90"
-            >
-              {bulkDeleteMutation.isPending ? "Deleting..." : `Delete ${soldIds.length}`}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={bulkDeleteOpen}
+        onOpenChange={setBulkDeleteOpen}
+        title={`Delete all ${soldIds.length} sold vehicle${soldIds.length === 1 ? "" : "s"}?`}
+        description="Every stock vehicle marked Sold will be removed, along with its images. The sales themselves are kept, but their vehicle links are cleared."
+        confirmLabel={`Delete ${soldIds.length}`}
+        busy={bulkDeleteMutation.isPending}
+        onConfirm={() => bulkDeleteMutation.mutateAsync()}
+      />
     </div>
   );
 }

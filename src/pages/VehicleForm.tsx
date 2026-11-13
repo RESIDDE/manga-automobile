@@ -26,6 +26,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { canCreate, canEdit } from "@/lib/permissions";
 import { CurrencyInput } from "@/components/CurrencyInput";
 import { toast } from "sonner";
+import { confirmDelete } from "@/components/DeleteConfirm";
 import { VIN_MAX_LENGTH } from "@/lib/constants";
 import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { SignaturePad } from "@/components/SignaturePad";
@@ -383,6 +384,12 @@ export default function VehicleForm() {
   };
 
   const removeExistingImage = async (imgId: string) => {
+    const ok = await confirmDelete({
+      title: "Delete this photo?",
+      description: "The saved photo is removed from the vehicle straight away.",
+      confirmLabel: "Delete photo",
+    });
+    if (!ok) return;
     await supabase.from("vehicle_images").delete().eq("id", imgId);
     setExistingImages((prev) => prev.filter((img) => img.id !== imgId));
   };

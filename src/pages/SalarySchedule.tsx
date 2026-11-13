@@ -24,6 +24,7 @@ import {
   PlusCircle, Trash2, Users, Wallet,
 } from "lucide-react";
 import { toast } from "sonner";
+import { DeleteConfirmDialog } from "@/components/DeleteConfirm";
 import { ArchiveToggle } from "@/components/ArchiveToggle";
 import { exportToCSV, printTable, downloadTableAsPDF } from "@/lib/exportHelpers";
 import { useAuth } from "@/hooks/useAuth";
@@ -750,25 +751,14 @@ export default function SalarySchedule() {
         </p>
       )}
 
-      <AlertDialog open={!!deleteId} onOpenChange={(open) => !open && setDeleteId(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove this row?</AlertDialogTitle>
-            <AlertDialogDescription>
-              It only comes off the {periodLabel(period)} sheet. Other months keep their own rows.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-              onClick={() => deleteId && removeLine.mutate(deleteId)}
-            >
-              Remove
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+      <DeleteConfirmDialog
+        open={!!deleteId}
+        onOpenChange={(open) => { if (!open) setDeleteId(null); }}
+        title="Remove this row?"
+        description={`It only comes off the ${periodLabel(period)} sheet. Other months keep their own rows.`}
+        confirmLabel="Remove row"
+        onConfirm={() => { if (deleteId) removeLine.mutate(deleteId); }}
+      />
     </div>
   );
 }
