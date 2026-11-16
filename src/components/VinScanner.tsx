@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useId, useState } from "react";
 import { Camera, CheckCircle2, Loader2, ScanLine, Search, TriangleAlert } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -21,7 +21,7 @@ interface Props {
  * reader finds the VIN and the car's details, or decode a VIN typed by hand.
  */
 export function VinScanner({ vin, onResult, className }: Props) {
-  const fileRef = useRef<HTMLInputElement>(null);
+  const inputId = useId();
   const [busy, setBusy] = useState<"photo" | "lookup" | null>(null);
   const [last, setLast] = useState<VinReadResult | null>(null);
 
@@ -70,25 +70,48 @@ export function VinScanner({ vin, onResult, className }: Props) {
           </div>
         </div>
         <div className="flex flex-wrap gap-2 shrink-0">
+          {/*
+            A real <label> for the file input, not a button that calls
+            input.click(). Opening a display:none input from script is refused by
+            iPhone Safari, some Android browsers and installed web apps, so the
+            button did nothing on phones. Tapping a label opens the picker
+            natively everywhere. The input stays in the page, visually hidden.
+          */}
           <input
-            ref={fileRef}
+            id={inputId}
             type="file"
             accept="image/*"
             onChange={handleFile}
-            className="hidden"
-            aria-hidden
+            disabled={busy !== null}
+            className="sr-only"
             tabIndex={-1}
+            aria-hidden="true"
           />
           <Button
-            type="button"
+            asChild
             size="sm"
-            onClick={() => fileRef.current?.click()}
-            disabled={busy !== null}
-            className="bg-violet-600 hover:bg-violet-700 text-white"
+            className={cn(
+              "bg-violet-600 hover:bg-violet-700 text-white cursor-pointer",
+              busy !== null && "pointer-events-none opacity-50",
+            )}
           >
-            {busy === "photo"
-              ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Reading photo…</>
-              : <><Camera className="h-4 w-4 mr-1.5" /> Upload VIN photo</>}
+            <label
+              htmlFor={inputId}
+              role="button"
+              tabIndex={busy !== null ? -1 : 0}
+              aria-disabled={busy !== null}
+              onKeyDown={(e) => {
+                // A label is not keyboard-activated by default; Enter/Space open the picker
+                if ((e.key === "Enter" || e.key === " ") && busy === null) {
+                  e.preventDefault();
+                  (document.getElementById(inputId) as HTMLInputElement | null)?.click();
+                }
+              }}
+            >
+              {busy === "photo"
+                ? <><Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> Reading photo…</>
+                : <><Camera className="h-4 w-4 mr-1.5" /> Upload VIN photo</>}
+            </label>
           </Button>
           <Button
             type="button"

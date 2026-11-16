@@ -423,9 +423,12 @@ export default function Messages() {
                   <Loader2 className="h-3.5 w-3.5 animate-spin" /> Sending {uploading}…
                 </p>
               )}
-              <input ref={imageInput} type="file" accept="image/*" multiple hidden
+              {/* Opened by <label>s below, not input.click(): phones refuse to open a hidden input from script */}
+              <input ref={imageInput} id="chat-photo-input" type="file" accept="image/*" multiple className="sr-only" tabIndex={-1} aria-hidden="true"
+                disabled={!!uploading}
                 onChange={(e) => { onPickFiles(e.target.files, true); e.target.value = ""; }} />
-              <input ref={fileInput} type="file" multiple hidden
+              <input ref={fileInput} id="chat-file-input" type="file" multiple className="sr-only" tabIndex={-1} aria-hidden="true"
+                disabled={!!uploading}
                 onChange={(e) => { onPickFiles(e.target.files, false); e.target.value = ""; }} />
               {recording ? (
                 <VoiceRecorder
@@ -435,13 +438,17 @@ export default function Messages() {
               ) : (
               <div className="flex items-end gap-2">
                 <div className="flex items-center h-11 shrink-0">
-                  <Button type="button" size="icon" variant="ghost" className="h-9 w-9 rounded-lg" aria-label="Send a photo"
-                    title="Photo" disabled={!!uploading} onClick={() => imageInput.current?.click()}>
-                    <ImagePlus className="h-5 w-5" />
+                  <Button asChild size="icon" variant="ghost"
+                    className={cn("h-9 w-9 rounded-lg cursor-pointer", uploading && "pointer-events-none opacity-50")}>
+                    <label htmlFor="chat-photo-input" role="button" aria-label="Send a photo" title="Photo">
+                      <ImagePlus className="h-5 w-5" />
+                    </label>
                   </Button>
-                  <Button type="button" size="icon" variant="ghost" className="h-9 w-9 rounded-lg" aria-label="Attach a file"
-                    title="File" disabled={!!uploading} onClick={() => fileInput.current?.click()}>
-                    <Paperclip className="h-5 w-5" />
+                  <Button asChild size="icon" variant="ghost"
+                    className={cn("h-9 w-9 rounded-lg cursor-pointer", uploading && "pointer-events-none opacity-50")}>
+                    <label htmlFor="chat-file-input" role="button" aria-label="Attach a file" title="File">
+                      <Paperclip className="h-5 w-5" />
+                    </label>
                   </Button>
                 </div>
                 <Textarea

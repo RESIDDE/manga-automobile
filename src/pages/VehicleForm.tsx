@@ -819,7 +819,7 @@ export default function VehicleForm() {
                   accept="image/*"
                   multiple
                   onChange={handleFileChange}
-                  className="hidden"
+                  className="sr-only"
                 />
               </label>
               <span className="text-sm text-muted-foreground">
@@ -839,7 +839,8 @@ export default function VehicleForm() {
                     <button
                       type="button"
                       onClick={() => removeExistingImage(img.id)}
-                      className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label="Remove photo"
+                      className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full p-1 opacity-100 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -855,7 +856,8 @@ export default function VehicleForm() {
                     <button
                       type="button"
                       onClick={() => removeNewImage(i)}
-                      className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full p-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                      aria-label="Remove photo"
+                      className="absolute top-1 right-1 bg-destructive text-destructive-foreground rounded-full p-1 opacity-100 [@media(hover:hover)]:opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity"
                     >
                       <X className="h-3 w-3" />
                     </button>
