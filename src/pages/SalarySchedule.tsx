@@ -21,8 +21,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertTriangle, CalendarClock, CopyPlus, Download, FileText, Printer,
-  PlusCircle, Trash2, Users, Wallet,
+  PlusCircle, Trash2, Users, Wallet, HandCoins,
 } from "lucide-react";
+import { Link } from "react-router-dom";
 import { toast } from "sonner";
 import { DeleteConfirmDialog } from "@/components/DeleteConfirm";
 import { ArchiveToggle } from "@/components/ArchiveToggle";
@@ -45,7 +46,7 @@ const COLUMNS =
   "id, period, staff_id, staff_name, designation, account_number, bank_name, " +
   "actual_salary, loan_amount, opening_balance, deduction, notes, sort_order";
 
-type Row = SalaryLine & { id: string; period: string };
+type Row = SalaryLine & { id: string; period: string; loan_auto?: boolean };
 
 const StatTile = ({ label, value, sub, tone = "text-foreground" }: {
   label: string; value: string; sub?: string; tone?: string;
@@ -155,12 +156,16 @@ export default function SalarySchedule() {
   const { data: lines = [], isLoading, isError } = useQuery({
     queryKey: ["salary-lines", period],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const read = (columns: string) => supabase
         .from("salary_lines")
-        .select(COLUMNS)
+        .select(columns)
         .eq("period", periodToDate(period))
         .order("sort_order", { ascending: true })
         .order("staff_name", { ascending: true });
+      // loan_auto marks figures filled from an approved staff loan; it arrives
+      // with the Staff Loans migration, so read without it until then.
+      let { data, error } = await read(`${COLUMNS}, loan_auto`);
+      if (error && isMissingSchema(error, ["loan_auto"])) ({ data, error } = await read(COLUMNS));
 
       if (error) {
         // The page must still render its month picker and its empty state while
@@ -666,6 +671,15 @@ export default function SalarySchedule() {
                         className={warnings.length ? "text-amber-600" : ""}
                         onCommit={(v) => set(line.id, "deduction", v, true)}
                       />
+                      {line.loan_auto && (
+                        <Link
+                          to="/staff-loans"
+                          title="Filled from an approved staff loan. Change the loan to change these figures."
+                          className="mt-0.5 flex items-center justify-end gap-1 text-[10px] font-semibold text-indigo-500 hover:underline print:hidden"
+                        >
+                          <HandCoins className="h-3 w-3" /> Staff loan
+                        </Link>
+                      )}
                     </TableCell>
 
                     {/* Computed: salary − deduction. Never typed, never stored. */}

@@ -13,11 +13,11 @@ const SALE = {
   buyer_signature: null as string | null,
   buyer_signature_date: null as string | null,
   is_registered: false,
-  customer: { name: "Zainab Bello", phone: "08010000000", email: "z@example.com", address: "Abuja" },
+  customer: { name: "Zainab Bello", phone: "08010000000", email: "z@example.com", address: "Abuja", nin: "12345678901" },
   sale_vehicles: [
     {
       price: 5_000_000,
-      vehicle: { make: "Lexus", model: "RX 350", year: 2015, trim: "F-Sport", vin: "JN1AZ4EH4FM", color: "Silver" },
+      vehicle: { make: "Lexus", model: "RX 350", year: 2015, trim: "F-Sport", vin: "JN1AZ4EH4FM", color: "Silver", num_keys: 2 },
     },
   ],
   sale_payments: [
@@ -91,7 +91,9 @@ describe("Sale signing link", () => {
 
     // Line item carries the vehicle with its VIN, trim and colour
     expect(sheet.getByText("2015 Lexus RX 350")).toBeInTheDocument();
-    expect(sheet.getByText(/JN1AZ4EH4FM · F-Sport · Silver/)).toBeInTheDocument();
+    expect(sheet.getByText(/Chassis No: JN1AZ4EH4FM · F-Sport · Colour: Silver · 2 keys/)).toBeInTheDocument();
+    expect(sheet.getByText("NIN:")).toBeInTheDocument();
+    expect(sheet.getByText("12345678901")).toBeInTheDocument();
 
     // It is the A4 sheet, so it matches what gets printed
     expect(document.querySelector(".print-document-page")).toBeTruthy();

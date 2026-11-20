@@ -60,6 +60,7 @@ const PAPER_COLUMNS = [
   "new_owner_details", "seller_sign_date", "buyer_sign_date",
   "seller_witness_date", "buyer_witness_date",
   "seller_nin", "buyer_nin",
+  "vehicle_registration_no",
 ];
 
 const PAPER_SELECT = PAPER_COLUMNS.join(", ");
@@ -99,6 +100,7 @@ const EMPTY_FORM = {
   vehicleYearModel: "",
   vehicleColor: "",
   vehiclePlateNumber: "",
+  vehicleRegistrationNo: "",
   vehicleEngineNumber: "",
   vehicleChassis: "",
   salePrice: "",
@@ -147,6 +149,7 @@ const rowToForm = (row: any): SAForm => ({
   vehicleYearModel: row.vehicle_year_model || "",
   vehicleColor: row.vehicle_color || "",
   vehiclePlateNumber: row.vehicle_plate_number || "",
+  vehicleRegistrationNo: row.vehicle_registration_no || "",
   vehicleEngineNumber: row.vehicle_engine_number || "",
   vehicleChassis: row.vehicle_chassis || "",
   salePrice: row.sale_price || "",
@@ -308,7 +311,8 @@ export function AgreementDocument({ data }: { data: SAForm }) {
           <FormLine label="Of" value={data.sellerAddress} />
           {data.sellerNin?.trim() && <FormLine label="NIN" value={data.sellerNin} />}
           <FormLine label="Here by agrees and sold my vehicle" value={vehicle} />
-          <FormLine label="Registration No" value={data.vehiclePlateNumber} />
+          <FormLine label="Registration No" value={data.vehicleRegistrationNo} />
+          <FormLine label="Plate No" value={data.vehiclePlateNumber} />
           <FormLine label="Engine No" value={data.vehicleEngineNumber} />
           <FormLine label="Chasis No" value={data.vehicleChassis} />
           <FormLine label="To" value={buyer} />
@@ -496,6 +500,7 @@ export default function SalesAgreement() {
         vehicle_year_model: form.vehicleYearModel.trim() || null,
         vehicle_color: form.vehicleColor.trim() || null,
         vehicle_plate_number: form.vehiclePlateNumber.trim() || null,
+        vehicle_registration_no: form.vehicleRegistrationNo.trim() || null,
         vehicle_engine_number: form.vehicleEngineNumber.trim() || null,
         vehicle_chassis: form.vehicleChassis.trim() || null,
         sale_price: form.salePrice.replace(/,/g, "") || null,
@@ -652,7 +657,7 @@ export default function SalesAgreement() {
               seller: { name: previewData.sellerName, phone: previewData.sellerPhone, address: previewData.sellerAddress, nin: previewData.sellerNin, id: previewData.sellerIdType },
               vehicle: {
                 make: previewData.vehicleMake, year_model: previewData.vehicleYearModel, colour: previewData.vehicleColor,
-                registration: previewData.vehiclePlateNumber, engine_number: previewData.vehicleEngineNumber, chassis: previewData.vehicleChassis,
+                plate_number: previewData.vehiclePlateNumber, registration: previewData.vehicleRegistrationNo, engine_number: previewData.vehicleEngineNumber, chassis: previewData.vehicleChassis,
               },
               agreement: previewData,
             },
@@ -916,6 +921,13 @@ export default function SalesAgreement() {
                     <div className="space-y-2">
                       <Label className="text-xs text-muted-foreground">Plate number</Label>
                       <Input name="vehiclePlateNumber" value={form.vehiclePlateNumber} onChange={handleChange}
+                        placeholder="e.g. ABJ 123 XY"
+                        className="rounded-xl h-11 bg-background/50 border-white/10 uppercase" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Registration number</Label>
+                      <Input name="vehicleRegistrationNo" value={form.vehicleRegistrationNo} onChange={handleChange}
+                        placeholder="From the vehicle papers"
                         className="rounded-xl h-11 bg-background/50 border-white/10 uppercase" />
                     </div>
                     <div className="space-y-2">

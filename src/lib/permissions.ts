@@ -21,6 +21,7 @@ export type PageKey =
   | "property-intake"
   | "salary"
   | "expenses"
+  | "loans"
   | "archive";
 
 export type PermissionAction = "view" | "create" | "edit" | "delete";
@@ -39,6 +40,9 @@ export const ALL_PAGES: { key: PageKey; label: string; path: string }[] = [
   { key: "property-intake",    label: "Property Intake",  path: "/property-intake" },
   { key: "salary",             label: "Salary Schedule",  path: "/salary-schedule" },
   { key: "expenses",           label: "Expenses",         path: "/expenses" },
+  // Confidential: admin only until a role is ticked. The database enforces the
+  // same View / Add / Edit / Delete ticks (20261120120000_staff_loans.sql).
+  { key: "loans",              label: "Staff Loans",      path: "/staff-loans" },
   // Read-only company record of every printed document. Admin has it; give it to
   // other roles by ticking View. Add/Edit/Delete do nothing here: the archive
   // cannot be changed by anyone.

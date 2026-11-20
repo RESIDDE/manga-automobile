@@ -40,6 +40,7 @@ import { usePermissions } from "@/hooks/usePermissions";
 import { useFormPersistence } from "@/hooks/useFormPersistence";
 import { canCreate, canDelete, canEdit } from "@/lib/permissions";
 import { logAction } from "@/lib/logger";
+import { omitKeys, warnOnce, withSchemaFallback } from "@/lib/dbCompat";
 import { VIN_FULL_LENGTH } from "@/lib/constants";
 import { formatNaira, numberToWords } from "@/lib/numberToWords";
 import {
@@ -52,6 +53,18 @@ const PAGE_KEY = "sales" as const;
 const ENTITY = "Consignment Agreement";
 
 /** House terms, printed on the form but negotiable per owner. */
+/** How the car came to us, as the office describes it. Stored as the key. */
+const VEHICLE_CONDITIONS = [
+  { value: "foreign_used", label: "Foreign Used" },
+  { value: "nigerian_used", label: "Nigerian Used" },
+  { value: "brand_new", label: "Brand New" },
+] as const;
+const conditionLabel = (value: string) =>
+  VEHICLE_CONDITIONS.find((c) => c.value === value)?.label ?? "";
+
+/** Newer columns: saved when the database has them, left out until it does. */
+const NEW_COLUMNS = ["vehicle_mileage", "vehicle_condition"];
+
 const DEFAULT_WITHDRAWAL_DAYS = "3";
 const DEFAULT_WITHDRAWAL_CHARGE = "100000";
 
@@ -75,6 +88,8 @@ const EMPTY_FORM = {
   vehicleYear: "",
   vehicleColor: "",
   vehicleChassis: "",
+  vehicleMileage: "",
+  vehicleCondition: "",
   agreedPrice: "",
 
   commissionAmount: "",
@@ -110,6 +125,8 @@ const rowToForm = (row: any): ConsignmentForm => ({
   vehicleYear: row.vehicle_year || "",
   vehicleColor: row.vehicle_color || "",
   vehicleChassis: row.vehicle_chassis || "",
+  vehicleMileage: row.vehicle_mileage || "",
+  vehicleCondition: row.vehicle_condition || "",
   agreedPrice: row.agreed_price != null ? String(row.agreed_price) : "",
   commissionAmount: row.commission_amount != null ? String(row.commission_amount) : "",
   commissionNote: row.commission_note || "",
@@ -194,6 +211,8 @@ export function ConsignmentDocument({ data }: { data: ConsignmentForm }) {
             <DocField label="Year" value={data.vehicleYear} />
             <DocField label="Colour" value={data.vehicleColor} />
             <DocField label="Chassis No" value={data.vehicleChassis} />
+            <DocField label="Mileage" value={data.vehicleMileage} />
+            <DocField label="Condition" value={conditionLabel(data.vehicleCondition)} />
           </div>
           <div className="mt-2 space-y-[4px]">
             <DocField label="Owner's Agreed Selling Price" value={formatNaira(price)} />
@@ -243,8 +262,14 @@ export function ConsignmentDocument({ data }: { data: ConsignmentForm }) {
               as service / display charge.
             </p>
 
+            <p>
+              <span className="font-bold">5. CONDITION FOR DISPLAY.</span> Before the vehicle is
+              displayed, the Owner must provide it with at least half a tank of fuel or, for an
+              electric vehicle (EV), a battery charge of 60% to 70%.
+            </p>
+
             <div>
-              <p><span className="font-bold">5. GENERAL TERMS.</span></p>
+              <p><span className="font-bold">6. GENERAL TERMS.</span></p>
               <ol className="list-[lower-alpha] pl-5 mt-1 space-y-[2px]">
                 <li>
                   The Owner confirms that the vehicle is his/her lawful property and is free from any
@@ -381,6 +406,8 @@ export default function ConsignmentAgreement() {
         vehicle_year: form.vehicleYear.trim() || null,
         vehicle_color: form.vehicleColor.trim() || null,
         vehicle_chassis: form.vehicleChassis.trim() || null,
+        vehicle_mileage: form.vehicleMileage.trim() || null,
+        vehicle_condition: form.vehicleCondition || null,
         agreed_price: money(form.agreedPrice),
         commission_amount: money(form.commissionAmount),
         commission_note: form.commissionNote.trim() || null,
@@ -397,22 +424,27 @@ export default function ConsignmentAgreement() {
         created_by: user?.id ?? null,
       };
 
+      // Until the mileage/condition migration is run, save everything else
+      const onMissing = () => warnOnce("consignment.mileage", () =>
+        toast.warning("Mileage and condition weren't saved — the database needs the consignment update"));
+
       if (editingId) {
-        const { error } = await supabase
-          .from("consignment_agreements")
-          .update(payload)
-          .eq("id", editingId);
-        if (error) throw error;
+        await withSchemaFallback(
+          () => (supabase as any).from("consignment_agreements").update(payload).eq("id", editingId).select("id"),
+          () => (supabase as any).from("consignment_agreements").update(omitKeys(payload, NEW_COLUMNS)).eq("id", editingId).select("id"),
+          NEW_COLUMNS,
+          onMissing,
+        );
         await logAction("UPDATE", ENTITY, editingId);
         return { id: editingId, document_no: form.documentNo || null };
       }
 
-      const { data, error } = await supabase
-        .from("consignment_agreements")
-        .insert(payload)
-        .select("id, document_no")
-        .single();
-      if (error) throw error;
+      const data: any = await withSchemaFallback(
+        () => (supabase as any).from("consignment_agreements").insert(payload).select("id, document_no").single(),
+        () => (supabase as any).from("consignment_agreements").insert(omitKeys(payload, NEW_COLUMNS)).select("id, document_no").single(),
+        NEW_COLUMNS,
+        onMissing,
+      );
       await logAction("CREATE", ENTITY, data.id);
       return data as { id: string; document_no: string | null };
     },
@@ -676,6 +708,34 @@ export default function ConsignmentAgreement() {
                         }
                         className="rounded-xl h-11 bg-background/50 border-white/10 font-mono uppercase"
                       />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="vehicleMileage" className="text-xs text-muted-foreground">Mileage</Label>
+                      <Input id="vehicleMileage" name="vehicleMileage" value={form.vehicleMileage} onChange={handleChange}
+                        placeholder="e.g. 85,000 km"
+                        className="rounded-xl h-11 bg-background/50 border-white/10" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs text-muted-foreground">Condition</Label>
+                      <div className="grid grid-cols-3 gap-2" role="radiogroup" aria-label="Condition of the vehicle">
+                        {VEHICLE_CONDITIONS.map((c) => {
+                          const on = form.vehicleCondition === c.value;
+                          return (
+                            <button
+                              key={c.value}
+                              type="button"
+                              role="radio"
+                              aria-checked={on}
+                              onClick={() => setForm((prev) => ({ ...prev, vehicleCondition: on ? "" : c.value }))}
+                              className={`h-11 rounded-xl border text-xs font-semibold transition-colors ${
+                                on ? "bg-teal-500 border-teal-500 text-white" : "bg-background/50 border-white/10 text-muted-foreground hover:text-foreground"
+                              }`}
+                            >
+                              {c.label}
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
                     <div className="space-y-2 md:col-span-2">
                       <Label htmlFor="agreedPrice" className="text-xs text-muted-foreground">Owner's agreed selling price (₦)</Label>

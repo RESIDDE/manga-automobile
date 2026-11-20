@@ -23,7 +23,8 @@ export const COMPANY = {
     "Abuja Nigeria.",
   ],
   tel: "08099999915",
-  // RC number and email are not on the current letterhead; add them here when known
+  /** Corporate Affairs Commission registration, printed under the phone number. */
+  rc: "9604190",
 };
 
 const NAVY = "#1b3a6b";
@@ -60,7 +61,7 @@ export function PrintHeader({ docNumber }: { docNumber?: string | null } = {}) {
           <img
             src={logoPrint}
             alt={`${COMPANY.name} ${COMPANY.nameSuffix}`}
-            className="h-[62px] w-auto object-contain"
+            className="h-[78px] w-auto object-contain"
           />
           <div className="mt-[6px] inline-block px-2 py-[2.5px]" style={{ backgroundColor: NAVY }}>
             <span className="text-[8.5px] font-black uppercase tracking-[0.03em] text-white">
@@ -78,6 +79,7 @@ export function PrintHeader({ docNumber }: { docNumber?: string | null } = {}) {
               <p key={line} className="m-0">{line}</p>
             ))}
             <p className="m-0">Tel: {COMPANY.tel}</p>
+            <p className="m-0 font-bold">RC. {COMPANY.rc}</p>
           </div>
           {docNumber !== undefined && (
             <p className="mt-[10px] text-[19px] font-bold tracking-[0.06em] text-black">
@@ -96,7 +98,7 @@ export function getPrintHeaderHTML() {
     <div style="padding-bottom: 8px; margin-bottom: 14px; position: relative;">
       <div style="display: flex; align-items: flex-start; justify-content: space-between; gap: 24px;">
         <div style="flex-shrink: 0;">
-          <img src="${logoPrint}" alt="${COMPANY.name} ${COMPANY.nameSuffix}" style="height: 62px; width: auto; object-fit: contain; display: block;" />
+          <img src="${logoPrint}" alt="${COMPANY.name} ${COMPANY.nameSuffix}" style="height: 78px; width: auto; object-fit: contain; display: block;" />
           <div style="display: inline-block; background: ${NAVY}; padding: 2.5px 8px; margin-top: 6px;">
             <span style="font-family: sans-serif; font-size: 8.5px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.3px; color: #fff;">
               ${COMPANY.tagline}
@@ -107,6 +109,7 @@ export function getPrintHeaderHTML() {
           <p style="font-size: 10px; font-weight: 900; text-transform: uppercase; letter-spacing: 0.6px; color: ${RED}; margin: 0 0 2px 0;">Address:</p>
           ${COMPANY.addressLines.map((line) => `<p style="margin: 0;">${line}</p>`).join("")}
           <p style="margin: 0;">Tel: ${COMPANY.tel}</p>
+          <p style="margin: 0; font-weight: 700;">RC. ${COMPANY.rc}</p>
         </div>
       </div>
     </div>
@@ -180,7 +183,7 @@ export function ModernLetterhead({
           <img
             src={logoPrint}
             alt={`${COMPANY.name} ${COMPANY.nameSuffix}`}
-            className="h-[58px] w-auto object-contain"
+            className="h-[72px] w-auto object-contain"
           />
           <div
             className="mt-2 inline-block border-[1.5px] px-2 py-[2px]"
@@ -214,6 +217,7 @@ export function ModernLetterhead({
               <p key={line} className="m-0">{line}</p>
             ))}
             <p className="m-0 mt-[2px] font-extrabold">Tel: {COMPANY.tel}</p>
+            <p className="m-0 font-bold">RC. {COMPANY.rc}</p>
           </div>
         </div>
       </div>

@@ -14,6 +14,8 @@ export type ReceiptLineItem = {
   vin?: string | null;
   color?: string | null;
   trim?: string | null;
+  /** Keys handed over with the car. */
+  keys?: number | null;
   amount: number;
 };
 
@@ -49,7 +51,7 @@ export type ReceiptDocProps = {
     sale_number?: number | string | null;
     agreement_details?: AgreementDetails | null;
   };
-  customer: { name?: string | null; phone?: string | null; address?: string | null; email?: string | null };
+  customer: { name?: string | null; phone?: string | null; address?: string | null; email?: string | null; nin?: string | null };
   items: ReceiptLineItem[];
   /** Set to print a receipt for one instalment rather than for the whole sale. */
   payment?: PaymentRow | null;
@@ -133,6 +135,13 @@ export function SaleReceiptDocument({
             {customer.phone && <p className="text-[10px] text-black">{customer.phone}</p>}
             {customer.address && <p className="text-[10px] text-black">{customer.address}</p>}
             {customer.email && <p className="text-[10px] text-black">{customer.email}</p>}
+            {/* Always shown: the number when it is on file, a line to write it on when not */}
+            <p className="text-[10px] text-black flex items-end gap-1">
+              <span>NIN:</span>
+              {customer.nin
+                ? <span className="font-semibold">{customer.nin}</span>
+                : <span className="inline-block w-[120px] pb-[2px]" style={{ borderBottom: ROW_RULE }}>&nbsp;</span>}
+            </p>
           </div>
           <div className="text-right">
             <MetaLabel>Date</MetaLabel>
@@ -161,7 +170,12 @@ export function SaleReceiptDocument({
           </thead>
           <tbody>
             {items.map((item) => {
-              const specs = [item.vin, item.trim, item.color].filter(Boolean).join(" · ");
+              const specs = [
+                item.vin && `Chassis No: ${item.vin}`,
+                item.trim,
+                item.color && `Colour: ${item.color}`,
+                typeof item.keys === "number" && item.keys > 0 && `${item.keys} key${item.keys === 1 ? "" : "s"}`,
+              ].filter(Boolean).join(" · ");
               return (
                 <tr key={item.id}>
                   <td className="py-[6px] align-top" style={{ borderBottom: ROW_RULE }}>

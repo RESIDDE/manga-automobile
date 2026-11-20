@@ -11,21 +11,19 @@ import {
   SaleReceiptDocument, type ReceiptBankDetails, type ReceiptLineItem,
 } from "@/components/SaleReceiptDocument";
 import { PrintSheet } from "@/components/PrintSheet";
-import { withSchemaFallback } from "@/lib/dbCompat";
+import { firstWorkingSelect } from "@/lib/dbCompat";
 import { formatNaira } from "@/lib/numberToWords";
 import { derivePaymentState } from "@/lib/receipts";
 
-const SALE_SELECT_WITH_PAYMENTS = `
+/**
+ * The receipt shows the customer's NIN and the keys handed over. Each column is
+ * named (this page is public: never "*"), and nin arrives with a migration, so
+ * the reads go newest shape first and fall back to what the database has.
+ */
+const saleSelect = ({ payments, nin }: { payments: boolean; nin: boolean }) => `
   *,
-  customer:customers(name, phone, email, address),
-  sale_vehicles(price, vehicle:vehicles(make, model, year, trim, vin, color)),
-  sale_payments(*)
-`;
-
-const SALE_SELECT_BASE = `
-  *,
-  customer:customers(name, phone, email, address),
-  sale_vehicles(price, vehicle:vehicles(make, model, year, trim, vin, color))
+  customer:customers(name, phone, email, address${nin ? ", nin" : ""}),
+  sale_vehicles(price, vehicle:vehicles(make, model, year, trim, vin, color, num_keys))${payments ? ",\n  sale_payments(*)" : ""}
 `;
 
 /**
@@ -46,11 +44,14 @@ export default function SignSale() {
     queryFn: async () =>
       // sale_payments arrives with a migration; without it the receipt falls
       // back to the stored payment status rather than failing to load at all.
-      withSchemaFallback(
-        () => supabase.from("sales").select(SALE_SELECT_WITH_PAYMENTS).eq("id", id).single(),
-        () => supabase.from("sales").select(SALE_SELECT_BASE).eq("id", id).single(),
-        ["sale_payments"]
-      ) as Promise<any>,
+      firstWorkingSelect<any>(
+        [
+          () => supabase.from("sales").select(saleSelect({ payments: true, nin: true })).eq("id", id).single(),
+          () => supabase.from("sales").select(saleSelect({ payments: true, nin: false })).eq("id", id).single(),
+          () => supabase.from("sales").select(saleSelect({ payments: false, nin: false })).eq("id", id).single(),
+        ],
+        ["sale_payments", "nin"],
+      ),
   });
 
   // Bank details are nice to have here; a public visitor may not be allowed to
@@ -92,6 +93,7 @@ export default function SignSale() {
         vin: v.vin ?? null,
         color: v.color ?? null,
         trim: v.trim ?? null,
+        keys: v.num_keys ?? null,
         amount: own > 0 ? own : share,
       };
     });

@@ -64,10 +64,11 @@ type QuoteItem = {
   condition: string;
   transmission: string;
   cylinders: string;
+  color: string;
 };
 
 const emptyManualVehicle = {
-  make: "", model: "", year: "", vin: "", basePrice: "",
+  make: "", model: "", year: "", vin: "", basePrice: "", color: "",
   condition: "Used", transmission: "Automatic", cylinders: "V4",
 };
 
@@ -175,7 +176,7 @@ function ProformaDocument({ doc }: { doc: QuoteDoc }) {
           </thead>
           <tbody>
             {doc.items.map((item) => {
-              const specs = [item.vin, item.condition, item.transmission, item.cylinders]
+              const specs = [item.color && `Colour: ${item.color}`, item.vin, item.condition, item.transmission, item.cylinders]
                 .filter(Boolean)
                 .join(" · ");
               return (
@@ -388,14 +389,14 @@ export default function ProformaInvoice() {
       return withSchemaFallback(
         () => supabase
           .from("vehicles")
-          .select("id, make, model, year, vin, price, condition, transmission, inventory_type")
+          .select("id, make, model, year, vin, color, price, condition, transmission, inventory_type")
           .eq("status", "Available")
           // Outside cars are quotable at their office price; only the workshop
           // is excluded. Kept as .or() rather than .neq() so NULL rows survive.
           .or("inventory_type.is.null,inventory_type.eq.main,inventory_type.eq.external"),
         () => supabase
           .from("vehicles")
-          .select("id, make, model, year, vin, price, condition, transmission")
+          .select("id, make, model, year, vin, color, price, condition, transmission")
           .eq("status", "Available"),
         ["inventory_type"]
       ) as Promise<any[]>;
@@ -454,6 +455,7 @@ export default function ProformaInvoice() {
         condition: i.condition || "",
         transmission: i.transmission || "",
         cylinders: i.cylinders || "",
+        color: i.color || "",
       }))
     );
     setVatPercentage(quote.vat_percentage ? String(quote.vat_percentage) : "");
@@ -483,6 +485,7 @@ export default function ProformaInvoice() {
         condition: v.condition || "",
         transmission: v.transmission || "",
         cylinders: "",
+        color: v.color || "",
       },
     ]);
     setVehiclePickerSearch("");
@@ -507,6 +510,7 @@ export default function ProformaInvoice() {
         condition: manualVehicle.condition,
         transmission: manualVehicle.transmission,
         cylinders: manualVehicle.cylinders,
+        color: manualVehicle.color.trim(),
       },
     ]);
     setManualVehicle({ ...emptyManualVehicle });
@@ -600,9 +604,14 @@ export default function ProformaInvoice() {
         condition: i.condition || null,
         transmission: i.transmission || null,
         cylinders: i.cylinders || null,
+        color: i.color?.trim() || null,
       }));
-      const { error: itemsError } = await supabase.from("performance_quote_items").insert(rows);
-      if (itemsError) throw itemsError;
+      // Until the colour migration is run, save the lines without it
+      await withSchemaFallback(
+        () => (supabase as any).from("performance_quote_items").insert(rows).select("id"),
+        () => (supabase as any).from("performance_quote_items").insert(rows.map((r) => omitKeys(r, ["color"]))).select("id"),
+        ["color"],
+      );
 
       return quoteId as string;
     },
@@ -656,6 +665,7 @@ export default function ProformaInvoice() {
         condition: i.condition || "",
         transmission: i.transmission || "",
         cylinders: i.cylinders || "",
+        color: i.color || "",
       })),
       vat_percentage: quote.vat_percentage ? String(quote.vat_percentage) : "",
       bank_name: quote.bank_name || "",
@@ -714,7 +724,7 @@ export default function ProformaInvoice() {
             details: {
               customer: previewDoc.customer,
               vehicles: previewDoc.items.map((i) => ({
-                description: i.vehicle_description, vin: i.vin, condition: i.condition, transmission: i.transmission,
+                description: i.vehicle_description, colour: i.color, vin: i.vin, condition: i.condition, transmission: i.transmission,
                 price: i.base_price, duty: i.has_duty ? i.duty_price : null, quantity: i.quantity,
                 ...(availableVehicles.find((v: any) => v.id === i.vehicle_id) ?? {}),
               })),
@@ -1081,6 +1091,9 @@ export default function ProformaInvoice() {
                       vin: e.target.value.toUpperCase().replace(/\s+/g, "").slice(0, VIN_FULL_LENGTH),
                     })}
                     className="h-10 rounded-xl bg-background/50 border-white/10 font-mono uppercase" />
+                  <Input placeholder="Colour" value={manualVehicle.color}
+                    onChange={(e) => setManualVehicle({ ...manualVehicle, color: e.target.value })}
+                    className="h-10 rounded-xl bg-background/50 border-white/10" />
                   <CurrencyInput placeholder="Base price" value={manualVehicle.basePrice}
                     onChange={(e) => setManualVehicle({ ...manualVehicle, basePrice: e.target.value })}
                     className="h-10 rounded-xl bg-background/50 border-white/10" />
@@ -1159,7 +1172,7 @@ export default function ProformaInvoice() {
                             <span className="truncate">{item.vehicle_description}</span>
                           </p>
                           <p className="text-[11px] text-muted-foreground mt-0.5">
-                            {[item.vin, item.condition, item.transmission, item.cylinders]
+                            {[item.color, item.vin, item.condition, item.transmission, item.cylinders]
                               .filter(Boolean).join(" · ") || "No specs"}
                           </p>
                         </div>

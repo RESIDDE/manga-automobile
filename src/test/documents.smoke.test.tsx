@@ -168,6 +168,7 @@ describe("the printed sales agreement", () => {
     vehicleYearModel: "Camry 2015",
     vehicleColor: "Black",
     vehiclePlateNumber: "ABC-123-XY",
+    vehicleRegistrationNo: "FCT-REG-55021",
     vehicleEngineNumber: "2AZ-4471920",
     vehicleChassis: "JTNBE46K733012345",
     salePrice: "5000000",
@@ -180,6 +181,14 @@ describe("the printed sales agreement", () => {
         <AgreementDocument data={data} />
       </MemoryRouter>
     );
+
+  it("prints the plate number and the registration number on separate lines", () => {
+    renderDoc();
+    expect(screen.getByText("Plate No")).toBeInTheDocument();
+    expect(screen.getByText("ABC-123-XY")).toBeInTheDocument();
+    expect(screen.getByText("Registration No")).toBeInTheDocument();
+    expect(screen.getByText("FCT-REG-55021")).toBeInTheDocument();
+  });
 
   it("carries the book's fixed wording verbatim", () => {
     renderDoc();

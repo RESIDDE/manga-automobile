@@ -88,6 +88,7 @@ export type Database = {
       }
       sales_agreements: {
         Row: {
+          vehicle_registration_no: string | null
           seller_nin: string | null
           buyer_nin: string | null
           id: string
@@ -131,6 +132,7 @@ export type Database = {
           created_by: string | null
         }
         Insert: {
+          vehicle_registration_no?: string | null
           seller_nin?: string | null
           buyer_nin?: string | null
           id?: string
@@ -174,6 +176,7 @@ export type Database = {
           created_by?: string | null
         }
         Update: {
+          vehicle_registration_no?: string | null
           seller_nin?: string | null
           buyer_nin?: string | null
           id?: string
@@ -292,6 +295,7 @@ export type Database = {
       }
       performance_quote_items: {
         Row: {
+          color: string | null
           id: string
           quote_id: string
           vehicle_id: string | null
@@ -307,6 +311,7 @@ export type Database = {
           created_at: string
         }
         Insert: {
+          color?: string | null
           id?: string
           quote_id: string
           vehicle_id?: string | null
@@ -322,6 +327,7 @@ export type Database = {
           created_at?: string
         }
         Update: {
+          color?: string | null
           id?: string
           quote_id?: string
           vehicle_id?: string | null
@@ -378,6 +384,8 @@ export type Database = {
       }
       consignment_agreements: {
         Row: {
+          vehicle_mileage: string | null
+          vehicle_condition: string | null
           document_no: string | null
           id: string
           created_at: string
@@ -409,6 +417,8 @@ export type Database = {
           created_by: string | null
         }
         Insert: {
+          vehicle_mileage?: string | null
+          vehicle_condition?: string | null
           document_no?: string | null
           id?: string
           created_at?: string
@@ -440,6 +450,8 @@ export type Database = {
           created_by?: string | null
         }
         Update: {
+          vehicle_mileage?: string | null
+          vehicle_condition?: string | null
           document_no?: string | null
           id?: string
           created_at?: string

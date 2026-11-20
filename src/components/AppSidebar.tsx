@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import {
   LayoutDashboard, Car, Users, FileSignature, MapPinned,
   Crown, Calendar, Building2, Search, ChevronsLeft, ChevronsRight,
-  ChevronDown, Plus, LogOut, Wallet, Receipt, MessageSquare, MonitorDown, Archive,
+  ChevronDown, Plus, LogOut, Wallet, Receipt, MessageSquare, MonitorDown, Archive, HandCoins,
 } from "lucide-react";
 import { NairaIcon } from "@/components/NairaIcon";
 import { NavLink } from "@/components/NavLink";
@@ -70,6 +70,7 @@ const ALL_NAV_ITEMS: NavItem[] = [
   { title: "Property", url: "/property-intake", pageKey: "property-intake", icon: Building2 },
   { title: "Meetings", url: "/meetings", pageKey: "meetings", icon: Calendar },
   { title: "Salary", url: "/salary-schedule", pageKey: "salary", icon: Wallet },
+  { title: "Staff Loans", url: "/staff-loans", pageKey: "loans", icon: HandCoins },
   { title: "Expenses", url: "/expenses", pageKey: "expenses", icon: Receipt },
   { title: "Archive", url: "/document-archive", pageKey: "archive", icon: Archive },
 ];

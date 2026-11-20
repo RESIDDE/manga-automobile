@@ -266,10 +266,10 @@ export default function Sales() {
       return withSchemaFallback(
         () => supabase
           .from("vehicles")
-          .select("id, make, model, year, color, vin, status, price, inventory_type"),
+          .select("id, make, model, year, color, vin, num_keys, status, price, inventory_type"),
         () => supabase
           .from("vehicles")
-          .select("id, make, model, year, color, vin, status, price"),
+          .select("id, make, model, year, color, vin, num_keys, status, price"),
         ["inventory_type"]
       );
     },
@@ -970,6 +970,7 @@ export default function Sales() {
         vin: vehicle?.vin ?? null,
         color: vehicle?.color ?? null,
         trim: vehicle?.trim ?? null,
+        keys: vehicle?.num_keys ?? null,
         amount: own > 0 ? own : share,
       };
     });
