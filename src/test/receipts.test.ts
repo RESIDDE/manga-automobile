@@ -129,12 +129,12 @@ describe("buildReceiptLedger", () => {
 
 describe("receiptMatches", () => {
   const [entry] = buildReceiptLedger([
-    sale({ id: "aaaa1111-0000", sale_date: "2026-11-06", sale_payments: [] }),
+    sale({ id: "aaaa1111-0000", sale_date: "2026-11-06", receipt_no: "014", sale_payments: [] }),
   ]);
   const context = { customer: "Zainab Bello", vehicles: "2015 Lexus RX 350", vins: "JN1AZ4EH4FM" };
 
   it("matches the receipt number, customer, vehicle and VIN", () => {
-    expect(receiptMatches(entry, "RCT-0611", context)).toBe(true);
+    expect(receiptMatches(entry, "014", context)).toBe(true);
     expect(receiptMatches(entry, "zainab", context)).toBe(true);
     expect(receiptMatches(entry, "lexus", context)).toBe(true);
     expect(receiptMatches(entry, "jn1az", context)).toBe(true);
@@ -156,5 +156,23 @@ describe("receiptMatches", () => {
     expect(receiptMatches(entry, "december", context)).toBe(false);
     expect(receiptMatches(entry, "toyota", context)).toBe(false);
     expect(receiptMatches(entry, "   ", context)).toBe(true);
+  });
+});
+
+describe("receipt numbers in the ledger", () => {
+  it("shows the number each receipt was issued with, and none before it is issued", () => {
+    const entries = buildReceiptLedger([
+      sale({
+        id: "s1", sale_date: "2026-11-06", receipt_no: "007",
+        sale_payments: [
+          { id: "p1", amount: 1_000_000, payment_date: "2026-11-07", receipt_no: "009" },
+          { id: "p2", amount: 1_000_000, payment_date: "2026-11-08" },
+        ],
+      }),
+    ]);
+    const byKey = Object.fromEntries(entries.map((e) => [e.key, e.number]));
+    expect(byKey["sale-s1"]).toBe("007");
+    expect(byKey["payment-p1"]).toBe("009");
+    expect(byKey["payment-p2"]).toBe(""); // not opened or printed yet
   });
 });

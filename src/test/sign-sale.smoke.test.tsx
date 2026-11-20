@@ -13,6 +13,7 @@ const SALE = {
   buyer_signature: null as string | null,
   buyer_signature_date: null as string | null,
   is_registered: false,
+  receipt_no: "014",
   customer: { name: "Zainab Bello", phone: "08010000000", email: "z@example.com", address: "Abuja", nin: "12345678901" },
   sale_vehicles: [
     {
@@ -101,8 +102,8 @@ describe("Sale signing link", () => {
 
   it("quotes the same receipt number the office will print", async () => {
     renderSignPage();
-    // RCT-DDMM-NNNN, from the shared helper — a re-print matches this slip
-    expect(await screen.findByText(/RCT-0611-AAAA/)).toBeInTheDocument();
+    // The issued number from the running sequence — a re-print matches this slip
+    expect(await screen.findByText("№ 014")).toBeInTheDocument();
   });
 
   it("shows the derived figures, not the stored status", async () => {

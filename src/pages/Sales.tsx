@@ -72,7 +72,7 @@ import { DocumentToolbar } from "@/components/DocumentToolbar";
 import { SalesReportDocument, type SalesReportRow } from "@/components/SalesReportDocument";
 import { archiveSheet, type ArchiveMeta } from "@/lib/archive";
 import { downloadDocument, waitForImages, type DocFormat } from "@/lib/documentExport";
-import { firstWorkingSelect, omitKeys, warnOnce, withSchemaFallback } from "@/lib/dbCompat";
+import { firstWorkingSelect, isMissingSchema, omitKeys, warnOnce, withSchemaFallback } from "@/lib/dbCompat";
 
 /**
  * Columns the sales list actually renders. The signature columns are left out on
@@ -193,6 +193,11 @@ export default function Sales() {
        */
       firstWorkingSelect<any[]>(
         [
+          // With the issued receipt numbers (20261120130000)
+          () => supabase
+            .from("sales")
+            .select(`${SALE_LIST_COLUMNS}, receipt_no, sale_vehicles(vehicle_id, price), sale_payments(id, amount, payment_date, payment_method, notes, created_at, receipt_no)`)
+            .order("created_at", { ascending: false }) as any,
           () => supabase
             .from("sales")
             .select(`${SALE_LIST_COLUMNS}, sale_vehicles(vehicle_id, price), sale_payments(id, amount, payment_date, payment_method, notes, created_at)`)
@@ -238,7 +243,7 @@ export default function Sales() {
     if (!receiptSale?.autoPrint) return;
     const id = setTimeout(() => {
       window.print();
-      archiveSheet(receiptDocRef.current, receiptArchiveMeta(receiptSale.sale, receiptSale.payment), "print");
+      archiveSheet(receiptDocRef.current, receiptArchiveMeta(receiptSale.sale, receiptSale.payment, receiptSale.receiptNo), "print");
       setReceiptSale((prev: any) => (prev ? { ...prev, autoPrint: false } : prev));
     }, 450);
     return () => clearTimeout(id);
@@ -535,7 +540,7 @@ export default function Sales() {
     const rows = filteredReceipts.map((entry) => {
       const ctx = receiptContext(entry.saleId);
       return {
-        "Receipt No": entry.number,
+        "Receipt No": entry.number || "Not issued yet",
         Type: entry.type,
         Label: entry.label,
         Date: entry.date ? new Date(entry.date).toLocaleDateString("en-GB") : "",
@@ -857,14 +862,36 @@ export default function Sales() {
   const canSubmit = form.selected_vehicle_ids.length > 0 && form.customer_id && form.sale_price && !upsertMutation.isPending;
 
   /** What the Document Archive records with a receipt: the full customer and vehicle records. */
-  const receiptArchiveMeta = (sale: any, payment: any = null): ArchiveMeta => {
+  /**
+   * The receipt's number: the one already issued, or the next in the running
+   * sequence (001, 002 …), issued by the database and kept for good. Until the
+   * receipt-number migration is run, the old date/id code is used instead.
+   */
+  const issueReceiptNo = async (sale: any, payment: any = null): Promise<string> => {
+    const stored = payment ? payment.receipt_no : sale.receipt_no;
+    if (stored) return stored;
+    const { data, error } = await (supabase as any).rpc("issue_receipt_number", {
+      p_sale: sale.id, p_payment: payment?.id ?? null,
+    });
+    if (error) {
+      if (isMissingSchema(error, ["issue_receipt_number", "receipt_no"])) {
+        warnOnce("receipt_numbers", () => toast.warning("Receipt numbering needs its database update — using the old receipt code for now"));
+        return receiptNumber(payment ? payment.id : sale.id, payment ? (payment.payment_date ?? null) : (sale.sale_date ?? null));
+      }
+      toast.error("Couldn't issue a receipt number. Try again.");
+      return "";
+    }
+    queryClient.invalidateQueries({ queryKey: ["sales"] });
+    return String(data ?? "");
+  };
+
+  const receiptArchiveMeta = (sale: any, payment: any = null, number = ""): ArchiveMeta => {
     const customer: any = customerObjMap[sale.customer_id] ?? null;
     const ids = saleVehicleIds(sale);
-    const number = receiptNumber(payment ? payment.id : sale.id, payment ? (payment.payment_date ?? null) : (sale.sale_date ?? null));
     return {
       type: "Receipt",
-      title: `Receipt ${number}${customer?.name ? ` — ${customer.name}` : ""}`,
-      number,
+      title: `Receipt ${number ? `No. ${number}` : ""}${customer?.name ? ` — ${customer.name}` : ""}`.trim(),
+      number: number || null,
       docDate: payment?.payment_date ?? sale.sale_date ?? null,
       person: customer?.name ?? null,
       phone: customer?.phone ?? null,
@@ -982,16 +1009,19 @@ export default function Sales() {
    */
   const printReceipt = async (sale: any, payment: any = null, paymentIndex = 0) => {
     const full = await fetchFullSale(sale);
-    setReceiptSale({ sale: full, payment, paymentIndex, autoPrint: true });
+    const receiptNo = await issueReceiptNo(full, payment);
+    setReceiptSale({ sale: full, payment, paymentIndex, receiptNo, autoPrint: true });
   };
 
   const openReceipt = async (sale: any, payment: any = null, paymentIndex = 0) => {
     const full = await fetchFullSale(sale);
-    setReceiptSale({ sale: full, payment, paymentIndex, autoPrint: false });
+    const receiptNo = await issueReceiptNo(full, payment);
+    setReceiptSale({ sale: full, payment, paymentIndex, receiptNo, autoPrint: false });
   };
 
   const downloadReceipt = async (listSale: any, format: DocFormat, payment: any = null) => {
     const sale = await fetchFullSale(listSale);
+    const receiptNo = await issueReceiptNo(sale, payment);
     // Render the document off-screen, capture it, then tear it down — the file is
     // the same markup the preview and the printer use.
     const host = document.createElement("div");
@@ -1012,6 +1042,7 @@ export default function Sales() {
             items={receiptItems(sale)}
             payment={payment}
             bank={bankDetails}
+            receiptNo={receiptNo}
           />
         );
         // Let the browser lay the sheet out (and decode the letterhead) first
@@ -1021,11 +1052,11 @@ export default function Sales() {
       const sheet = host.querySelector<HTMLElement>(".print-document-page") ?? host;
       await downloadDocument(
         sheet,
-        `receipt-${receiptNumber(payment ? payment.id : sale.id, payment ? (payment.payment_date ?? null) : (sale.sale_date ?? null))}`,
+        `receipt-${receiptNo || sale.id.slice(0, 8)}`,
         format
       );
       logAction("EXPORT", "Receipt", sale.id, { format, payment: !!payment });
-      await archiveSheet(host, receiptArchiveMeta(sale, payment), format);
+      await archiveSheet(host, receiptArchiveMeta(sale, payment, receiptNo), format);
     } finally {
       root.unmount();
       host.remove();
@@ -1112,7 +1143,7 @@ export default function Sales() {
   }
 
   if (receiptSale) {
-    const { sale, payment, paymentIndex } = receiptSale;
+    const { sale, payment, paymentIndex, receiptNo } = receiptSale;
     // Merge in anything newer from the list (a payment added a moment ago) while
     // keeping the signatures that only the full row carries.
     const fromList = (sales as any[]).find((x: any) => x.id === sale.id);
@@ -1121,13 +1152,10 @@ export default function Sales() {
       <div className="animate-fade-in">
         <DocumentToolbar
           documentRef={receiptDocRef}
-          filename={`receipt-${receiptNumber(
-            payment ? payment.id : live.id,
-            payment ? (payment.payment_date ?? null) : (live.sale_date ?? null)
-          )}`}
+          filename={`receipt-${receiptNo || live.id.slice(0, 8)}`}
           entity="Receipt"
           recordId={live.id}
-          archive={receiptArchiveMeta(live, payment)}
+          archive={receiptArchiveMeta(live, payment, receiptNo)}
           backLabel="Back to Sales"
           accentClass="bg-violet-500 hover:bg-violet-600 shadow-violet-500/20"
           onBack={() => setReceiptSale(null)}
@@ -1140,6 +1168,7 @@ export default function Sales() {
             payment={payment}
             paymentIndex={paymentIndex}
             bank={bankDetails}
+            receiptNo={receiptNo}
           />
         </PrintSheet>
       </div>
@@ -1441,7 +1470,9 @@ export default function Sales() {
                         const ctx = receiptContext(entry.saleId);
                         return (
                           <TableRow key={entry.key} className="border-border/10 hover:bg-white/5">
-                            <TableCell className="font-mono text-xs font-semibold">{entry.number}</TableCell>
+                            <TableCell className="font-mono text-xs font-semibold">
+                              {entry.number ? `№ ${entry.number}` : <span className="font-sans font-normal text-muted-foreground">Not issued yet</span>}
+                            </TableCell>
                             <TableCell>
                               <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
                                 entry.type === "sale" ? "bg-violet-500/10 text-violet-500" : "bg-emerald-500/10 text-emerald-500"
@@ -1656,7 +1687,8 @@ export default function Sales() {
                     menu={[
                       {
                         label: "Sign link", icon: QrCode, tone: "text-amber-500",
-                        onClick: () => setQrId(s.id),
+                        // The customer signs the actual receipt, so it carries its number from the start
+                        onClick: () => { setQrId(s.id); issueReceiptNo(s); },
                       },
                       {
                         label: "Download PDF", icon: FileText, tone: "text-violet-500",
@@ -2284,7 +2316,7 @@ export default function Sales() {
                                     printReceipt(livePaymentsSale, payment, index);
                                   }}>
                                   <Printer className="h-3.5 w-3.5 mr-1.5" />
-                                  {receiptNumber(payment.id, payment.payment_date || payment.created_at || null)}
+                                  {payment.receipt_no ? `№ ${payment.receipt_no}` : "Receipt"}
                                 </Button>
                               </TableCell>
                             </TableRow>

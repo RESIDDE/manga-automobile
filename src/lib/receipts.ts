@@ -13,6 +13,8 @@ export type PaymentRow = {
   payment_method?: string | null;
   notes?: string | null;
   created_at?: string | null;
+  /** The receipt number issued for this instalment (20261120130000). */
+  receipt_no?: string | null;
 };
 
 export type SaleRow = {
@@ -26,6 +28,8 @@ export type SaleRow = {
   payment_type?: string | null;
   notes?: string | null;
   is_registered?: boolean | null;
+  /** The receipt number issued for the sale's own receipt. */
+  receipt_no?: string | null;
   sale_vehicles?: { vehicle_id?: string | null; price?: number | string | null }[] | null;
   sale_payments?: PaymentRow[] | null;
 };
@@ -131,7 +135,8 @@ export function buildReceiptLedger(sales: SaleRow[]): ReceiptEntry[] {
     entries.push({
       key: `sale-${sale.id}`,
       type: "sale",
-      number: receiptNumber(sale.id, saleDate),
+      // The number the receipt was issued with; empty until it is first opened
+      number: sale.receipt_no || "",
       saleId: sale.id,
       paymentId: null,
       date: saleDate,
@@ -155,7 +160,7 @@ export function buildReceiptLedger(sales: SaleRow[]): ReceiptEntry[] {
       entries.push({
         key: `payment-${payment.id}`,
         type: "payment",
-        number: receiptNumber(payment.id, date),
+        number: payment.receipt_no || "",
         saleId: sale.id,
         paymentId: payment.id,
         date,

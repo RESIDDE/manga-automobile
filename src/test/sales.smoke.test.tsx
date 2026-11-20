@@ -31,9 +31,10 @@ const SALES = [
     payment_status: "deposit",
     notes: "",
     is_registered: false,
+    receipt_no: "014",
     sale_vehicles: [{ vehicle_id: "v2", price: 3_000_000 }],
     sale_payments: [
-      { id: "bbbb2222-0000", amount: 1_000_000, payment_date: "2026-11-06T10:00:00Z", payment_method: "cash" },
+      { id: "bbbb2222-0000", amount: 1_000_000, payment_date: "2026-11-06T10:00:00Z", payment_method: "cash", receipt_no: "015" },
     ],
   },
 ];
@@ -144,9 +145,9 @@ describe("Sales page", () => {
   it("lists one receipt per sale and one per payment", async () => {
     renderSales();
     fireEvent.click(await screen.findByText("Receipt Records"));
-    // RCT-DDMM-NNNN, from the record's date and the first four digits of its uuid
-    expect(await screen.findByText("RCT-0611-AAAA")).toBeInTheDocument();
-    expect(screen.getByText("RCT-0611-BBBB")).toBeInTheDocument();
+    // The numbers issued from the running sequence (001, 002 …)
+    expect(await screen.findByText("№ 014")).toBeInTheDocument();
+    expect(screen.getByText("№ 015")).toBeInTheDocument();
   });
 
   it("offers only unsold stock on a new sale", async () => {

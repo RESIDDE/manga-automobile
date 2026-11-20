@@ -49,6 +49,7 @@ export type ReceiptDocProps = {
     buyer_signature_date?: string | null;
     rep_signature_date?: string | null;
     sale_number?: number | string | null;
+    receipt_no?: string | null;
     agreement_details?: AgreementDetails | null;
   };
   customer: { name?: string | null; phone?: string | null; address?: string | null; email?: string | null; nin?: string | null };
@@ -57,6 +58,8 @@ export type ReceiptDocProps = {
   payment?: PaymentRow | null;
   paymentIndex?: number;
   bank?: ReceiptBankDetails;
+  /** The issued receipt number. Falls back to the one stored on the sale or payment. */
+  receiptNo?: string | null;
 };
 
 /**
@@ -69,7 +72,7 @@ export type ReceiptDocProps = {
  * appear and the signature slots are relabelled.
  */
 export function SaleReceiptDocument({
-  sale, customer, items, payment = null, paymentIndex = 0, bank,
+  sale, customer, items, payment = null, paymentIndex = 0, bank, receiptNo,
 }: ReceiptDocProps) {
   const state = derivePaymentState(sale);
   const agreement = sale.agreement_details ?? {};
@@ -80,7 +83,9 @@ export function SaleReceiptDocument({
   const receiptDate = payment
     ? (payment.payment_date || payment.created_at || null)
     : (sale.sale_date || sale.created_at || null);
-  const number = receiptNumber(payment ? payment.id : sale.id, receiptDate);
+  // One running sequence (001, 002 …) issued by the database the first time a
+  // receipt is opened; reprints and archive copies carry the same number.
+  const number = receiptNo ?? (payment ? (payment as any).receipt_no : sale.receipt_no) ?? "";
 
   const headlineAmount = payment ? Number(payment.amount ?? 0) : state.total;
   const paidSoFar = payment
@@ -117,7 +122,7 @@ export function SaleReceiptDocument({
           </div>
           <div className="text-right">
             <div className="border-2 border-black px-3 py-1 inline-block">
-              <span className="text-[16px] font-black tracking-wider">№ {number}</span>
+              <span className="text-[16px] font-black tracking-wider">№ {number || "\u00A0\u00A0\u00A0\u00A0\u00A0\u00A0"}</span>
             </div>
             {payment && (
               <p className="text-[9px] font-bold uppercase tracking-wider text-neutral-500 mt-1">
